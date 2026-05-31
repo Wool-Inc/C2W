@@ -1,0 +1,20 @@
+name: c2w
+version: '1.0-SNAPSHOT'
+
+main: net.klaaswhite.c2w.C2W
+api-version: '26.1'
+
+commands:
+#  specie:
+#    description: Sets class of player
+#    usage: /<command>
+  spawnertimer:
+    description: settings for the spawner timer
+
+  marker:
+    description: Creates markers
+  c2w:
+    description: C2w commands
+
+depend:
+  [ProtocolLib]
