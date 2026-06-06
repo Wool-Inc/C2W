@@ -38,7 +38,7 @@ public class SpawnerManager implements IManager {
         queues.add(new ConcurrentLinkedQueue<>());
         queues.add(new ConcurrentLinkedQueue<>());
 
-        this.managers.get(EventManager.class).registerInternalEvent(StartGameEvent.class, this::startGame);
+        this.managers.get(EventManager.class).getValue().registerInternalEvent(StartGameEvent.class, this::startGame);
     }
 
     public void startGame(StartGameEvent event){

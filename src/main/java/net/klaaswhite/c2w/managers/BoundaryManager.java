@@ -14,21 +14,26 @@ import java.util.function.Consumer;
 
 public class BoundaryManager implements IManager {
 
+    private final Lazy<MarkerManager> markerManager;
+    private final Lazy<PlayerManager> playerManager;
+    private final Lazy<EventManager> eventManager;
+
     private Hashtable<ManagedTeam, HashSet<ManagedPlayer>> teamPlayersInPit;
     private HashSet<ManagedPlayer> playersInPit;
     private HashSet<Wool> woolsInPit;
 
-    private final MarkerManager markerManager;
-    private final PlayerManager playerManager;
+
 
     private ArrayList<BoundingBoxActions> boundingBoxes;
 
     public BoundaryManager(Managers managers){
         this.markerManager = managers.get(MarkerManager.class);
         this.playerManager = managers.get(PlayerManager.class);
+        this.eventManager = managers.get(EventManager.class);
 
-        managers.get(EventManager.class).registerMinecraftEvent(PlayerMoveEvent.class, this::onPlayerMove);
-        managers.get(EventManager.class).registerInternalEvent(InitializeGameEvent.class, this::init);
+
+        this.eventManager.getValue().registerMinecraftEvent(PlayerMoveEvent.class, this::onPlayerMove);
+        this.eventManager.getValue().registerInternalEvent(InitializeGameEvent.class, this::init);
     }
 
     public void init(InitializeGameEvent event){
@@ -40,15 +45,15 @@ public class BoundaryManager implements IManager {
         }
         this.woolsInPit = new HashSet<>();
 
-        var pitMarker1 = this.markerManager.getMarker(KnownMarkers.BOUNDARY_WOOLCAP_PIT_1);
-        var pitMarker2 = this.markerManager.getMarker(KnownMarkers.BOUNDARY_WOOLCAP_PIT_2);
+        var pitMarker1 = this.markerManager.getValue().getMarker(KnownMarkers.BOUNDARY_WOOLCAP_PIT_1);
+        var pitMarker2 = this.markerManager.getValue().getMarker(KnownMarkers.BOUNDARY_WOOLCAP_PIT_2);
 
         if (pitMarker1 != null && pitMarker2 != null){
             initializePitWoolCapture(pitMarker1, pitMarker2);
         }
 
-        var elevatorMarker1 = this.markerManager.getMarker(KnownMarkers.BOUNDARY_WOOLCAP_ELEVATOR_1);
-        var elevatorMarker2 = this.markerManager.getMarker(KnownMarkers.BOUNDARY_WOOLCAP_ELEVATOR_2);
+        var elevatorMarker1 = this.markerManager.getValue().getMarker(KnownMarkers.BOUNDARY_WOOLCAP_ELEVATOR_1);
+        var elevatorMarker2 = this.markerManager.getValue().getMarker(KnownMarkers.BOUNDARY_WOOLCAP_ELEVATOR_2);
 
         if (elevatorMarker1 != null && elevatorMarker2 != null){
             initializeElevatorWoolCapture(elevatorMarker1, elevatorMarker2);
@@ -79,7 +84,7 @@ public class BoundaryManager implements IManager {
         var from = event.getFrom();
         var to = event.getTo();
 
-        var managedPlayer = this.playerManager.getPlayer(event.getPlayer());
+        var managedPlayer = this.playerManager.getValue().getPlayer(event.getPlayer());
 
         if (to == null || managedPlayer == null)
             return;

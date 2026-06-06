@@ -1,6 +1,7 @@
 package net.klaaswhite.c2w.managers;
 
 import net.klaaswhite.c2w.C2W;
+import net.klaaswhite.c2w.classes.Lazy;
 import net.klaaswhite.c2w.interfaces.IManager;
 
 import java.util.HashMap;
@@ -24,10 +25,11 @@ public class Managers implements AutoCloseable {
         register(EntityManager.class, new EntityManager(this));
         register(MarkerManager.class, new MarkerManager(this));
         register(PlayerManager.class, new PlayerManager(this));
-
+        register(WorldManager.class, new WorldManager(this));
         register(BoundaryManager.class, new BoundaryManager(this));
 
         register(CommandManager.class, new CommandManager(this));
+
     }
 
     private void closeManagers(){
@@ -57,9 +59,14 @@ public class Managers implements AutoCloseable {
         this.managers.put(type, instance);
     }
 
-    public <T extends IManager>
-    T get(Class<T> type){
+    private <T extends IManager>
+    T getInternal(Class<T> type){
         return type.cast(managers.get(type));
+    }
+
+    public <T extends IManager>
+    Lazy<T> get(Class<T> type){
+        return new Lazy<>(() -> getInternal(type));
     }
 
     @Override

@@ -1,11 +1,13 @@
 package net.klaaswhite.c2w.managers;
 
 import net.klaaswhite.c2w.classes.KnownMarkers;
+import net.klaaswhite.c2w.classes.Lazy;
+import net.klaaswhite.c2w.classes.ManagedMarker;
 import net.klaaswhite.c2w.classes.Wool;
-import net.klaaswhite.c2w.commands.base.CommandInput;
 import net.klaaswhite.c2w.events.InitializeGameEvent;
 import net.klaaswhite.c2w.events.StartGameEvent;
 import net.klaaswhite.c2w.interfaces.IManager;
+import net.klaaswhite.c2w.worlds.ManagedWorld;
 import org.bukkit.Location;
 import org.bukkit.NamespacedKey;
 import org.bukkit.World;
@@ -16,7 +18,6 @@ import org.bukkit.persistence.PersistentDataType;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Hashtable;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -24,7 +25,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class MarkerManager implements IManager {
 
     private final Managers managers;
-    private final EventManager eventManager;
+    private final Lazy<EventManager> eventManager;
 
     private final ArrayList<Wool> wools;
     private final NamespacedKey markerKey;
@@ -35,9 +36,9 @@ public class MarkerManager implements IManager {
 
     public MarkerManager(Managers managers){
         this.managers = managers;
-        this.eventManager = this.managers.get(EventManager.class);
-        this.eventManager.registerInternalEvent(InitializeGameEvent.class, this::init);
-        this.eventManager.registerInternalEvent(StartGameEvent.class, this::start);
+        this.eventManager = managers.get(EventManager.class);
+        this.eventManager.getValue().registerInternalEvent(InitializeGameEvent.class, this::init);
+        this.eventManager.getValue().registerInternalEvent(StartGameEvent.class, this::start);
 
         markerKey = new NamespacedKey(managers.getPlugin(), "map_marker");
         wools = new ArrayList<>();
@@ -45,8 +46,12 @@ public class MarkerManager implements IManager {
         initialized = new AtomicBoolean(false);
     }
 
-    private Hashtable<String, Marker> getMarkers(World world) {
-        var markers = new Hashtable<String, Marker>();
+    public Hashtable<String, ManagedMarker> getMarkersInWorld(ManagedWorld world){
+        return getMarkersInWorld(world.getWorld());
+    }
+
+    public Hashtable<String, ManagedMarker> getMarkersInWorld(World world) {
+        var markers = new Hashtable<String, ManagedMarker>();
 
         var entities = world.getEntities();
         for(var entity : entities){
@@ -56,7 +61,7 @@ public class MarkerManager implements IManager {
             var name = marker.getPersistentDataContainer().get(this.markerKey, PersistentDataType.STRING);
             if (name == null)
                 continue;
-            markers.put(name, marker);
+            markers.put(name, new ManagedMarker(marker, name));
         }
 
         return markers;
@@ -93,8 +98,8 @@ public class MarkerManager implements IManager {
         }
     }
 
-    public List<String> getMarkers(Player caller){
-        var markers = getMarkers(caller.getWorld());
+    public List<String> getMarkersInWorld(Player caller){
+        var markers = getMarkersInWorld(caller.getWorld());
         return markers.keySet().stream().toList();
     }
 
@@ -118,7 +123,7 @@ public class MarkerManager implements IManager {
     }
 
     public boolean removeMarker(Player caller, String markerName){
-        var markers = getMarkers(caller.getWorld());
+        var markers = getMarkersInWorld(caller.getWorld());
         if (!markers.containsKey(markerName)) return false;
         markers.get(markerName).remove();
         return true;
@@ -165,7 +170,7 @@ public class MarkerManager implements IManager {
         return this.markers.get(markerName);
     }
 
-    public List<KnownMarkers> getMarkers(){
+    public List<KnownMarkers> getMarkersInWorld(){
         if (!initialized.get()) return List.of();
         return markers.keySet().stream().toList();
     }

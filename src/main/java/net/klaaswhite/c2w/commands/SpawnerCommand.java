@@ -15,7 +15,7 @@ public class SpawnerCommand extends BaseCommand {
     private final SpawnerManager spawnerManager;
 
     public SpawnerCommand(Managers managers) {
-        this.spawnerManager = managers.get(SpawnerManager.class);
+        this.spawnerManager = managers.get(SpawnerManager.class).getValue();
         super(managers);
     }
 

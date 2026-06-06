@@ -2,6 +2,7 @@ D:\minecraft\C2W\C2W\src\main\java\net\klaaswhite\c2w\C2W.java
 D:\minecraft\C2W\C2W\src\main\java\net\klaaswhite\c2w\classes\KnownMarkers.java
 D:\minecraft\C2W\C2W\src\main\java\net\klaaswhite\c2w\classes\ManagedPlayer.java
 D:\minecraft\C2W\C2W\src\main\java\net\klaaswhite\c2w\classes\ManagedTeam.java
+D:\minecraft\C2W\C2W\src\main\java\net\klaaswhite\c2w\classes\ManagedWorld.java
 D:\minecraft\C2W\C2W\src\main\java\net\klaaswhite\c2w\classes\Wool.java
 D:\minecraft\C2W\C2W\src\main\java\net\klaaswhite\c2w\classes\WoolTimer.java
 D:\minecraft\C2W\C2W\src\main\java\net\klaaswhite\c2w\commands\base\BaseCommand.java
@@ -16,6 +17,7 @@ D:\minecraft\C2W\C2W\src\main\java\net\klaaswhite\c2w\commands\CommandPieces\Tre
 D:\minecraft\C2W\C2W\src\main\java\net\klaaswhite\c2w\commands\MarkerCommand.java
 D:\minecraft\C2W\C2W\src\main\java\net\klaaswhite\c2w\commands\SpawnerCommand.java
 D:\minecraft\C2W\C2W\src\main\java\net\klaaswhite\c2w\commands\SpeciesCommand.java
+D:\minecraft\C2W\C2W\src\main\java\net\klaaswhite\c2w\commands\WorldCommand.java
 D:\minecraft\C2W\C2W\src\main\java\net\klaaswhite\c2w\eventlisteners\BlockEventListeners.java
 D:\minecraft\C2W\C2W\src\main\java\net\klaaswhite\c2w\eventlisteners\EntityEventListeners.java
 D:\minecraft\C2W\C2W\src\main\java\net\klaaswhite\c2w\eventlisteners\PlayerEventListeners.java
@@ -58,4 +60,5 @@ D:\minecraft\C2W\C2W\src\main\java\net\klaaswhite\c2w\managers\Managers.java
 D:\minecraft\C2W\C2W\src\main\java\net\klaaswhite\c2w\managers\MarkerManager.java
 D:\minecraft\C2W\C2W\src\main\java\net\klaaswhite\c2w\managers\PlayerManager.java
 D:\minecraft\C2W\C2W\src\main\java\net\klaaswhite\c2w\managers\SpawnerManager.java
+D:\minecraft\C2W\C2W\src\main\java\net\klaaswhite\c2w\managers\WorldManager.java
 D:\minecraft\C2W\C2W\src\main\java\net\klaaswhite\c2w\packetlisteners\ChangeTeamPacketListener.java
