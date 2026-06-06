@@ -33,7 +33,7 @@ public class PlayerManager implements IManager {
 
     public PlayerManager(Managers managers){
         this.managers = managers;
-        this.eventManager = this.managers.get(EventManager.class);
+        this.eventManager = this.managers.get(EventManager.class).getValue();
 
         this.eventManager.registerInternalEvent(InitializeGameEvent.class, this::init);
 

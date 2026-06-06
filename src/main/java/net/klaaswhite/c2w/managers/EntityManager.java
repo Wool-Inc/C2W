@@ -23,7 +23,7 @@ public class EntityManager implements IManager {
 
     public EntityManager(Managers managers){
         var eventManager = managers.get(EventManager.class);
-        eventManager.registerMinecraftEvent(EntityPickupItemEvent.class, this::onEntityPickupItemEvent);
+        eventManager.getValue().registerMinecraftEvent(EntityPickupItemEvent.class, this::onEntityPickupItemEvent);
 
         itemPickedUpEventListeners = new Hashtable<>();
     }

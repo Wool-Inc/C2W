@@ -5,6 +5,9 @@ net\klaaswhite\c2w\managers\GameManager$GameState.class
 net\klaaswhite\c2w\managers\CommandManager.class
 net\klaaswhite\c2w\classes\ManagedPlayer.class
 net\klaaswhite\c2w\commands\CommandPieces\TreeChoiceCommandPiece.class
+net\klaaswhite\c2w\managers\WorldManager.class
+net\klaaswhite\c2w\classes\ManagedWorld.class
+net\klaaswhite\c2w\commands\WorldCommand.class
 net\klaaswhite\c2w\eventlisteners\PlayerEventListeners.class
 net\klaaswhite\c2w\managers\MarkerManager.class
 net\klaaswhite\c2w\managers\GameManager.class
@@ -13,6 +16,7 @@ net\klaaswhite\c2w\commands\C2WCommand.class
 net\klaaswhite\c2w\events\StartGameEvent.class
 net\klaaswhite\c2w\commands\base\BaseCommand.class
 net\klaaswhite\c2w\commands\base\CommandInput.class
+net\klaaswhite\c2w\classes\ManagedWorld$VoidChunkGenerator.class
 net\klaaswhite\c2w\events\EndGameEvent.class
 net\klaaswhite\c2w\events\WoolCapturedEvent.class
 net\klaaswhite\c2w\commands\base\C2WTabCompleter.class

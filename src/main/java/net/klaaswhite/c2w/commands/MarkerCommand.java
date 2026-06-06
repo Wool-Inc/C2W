@@ -6,7 +6,6 @@ import net.klaaswhite.c2w.commands.CommandPieces.ListChoiceCommandPiece;
 import net.klaaswhite.c2w.commands.CommandPieces.TreeChoiceCommandPiece;
 import net.klaaswhite.c2w.commands.base.BaseCommand;
 import net.klaaswhite.c2w.commands.base.CommandInput;
-import net.klaaswhite.c2w.managers.EntityManager;
 import net.klaaswhite.c2w.managers.Managers;
 import net.klaaswhite.c2w.managers.MarkerManager;
 import org.bukkit.entity.Player;
@@ -18,7 +17,7 @@ public class MarkerCommand extends BaseCommand {
     private final MarkerManager markerManager;
 
     public MarkerCommand(Managers managers) {
-        markerManager = managers.get(MarkerManager.class);
+        markerManager = managers.get(MarkerManager.class).getValue();
         super(managers);
     }
 
@@ -68,7 +67,7 @@ public class MarkerCommand extends BaseCommand {
         if (!(commandInput.commandSender instanceof Player player))
             return List.of();
 
-        return this.markerManager.getMarkers(player);
+        return this.markerManager.getMarkersInWorld(player);
     }
 
     private List<String> getKnownMarkers(){

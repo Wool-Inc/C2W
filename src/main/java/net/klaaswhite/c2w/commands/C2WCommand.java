@@ -52,8 +52,8 @@ public class C2WCommand extends BaseCommand {
     }
 
     public C2WCommand(Managers managers){
-        this.gameManager = managers.get(GameManager.class);
-        this.markerManager = managers.get(MarkerManager.class);
+        this.gameManager = managers.get(GameManager.class).getValue();
+        this.markerManager = managers.get(MarkerManager.class).getValue();
         super(managers);
     }
 

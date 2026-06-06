@@ -78,7 +78,7 @@ public class Wool implements ICarriable, AutoCloseable {
 
     public Wool(Managers managers, World world, String name, Location location, Material material, BarColor barColor, KnownMarkers capMarker){
         this.managers = managers;
-        this.markerManager = this.managers.get(MarkerManager.class);
+        this.markerManager = this.managers.get(MarkerManager.class).getValue();
         this.world = world;
         this.name = name;
         this.location = location;
@@ -92,7 +92,7 @@ public class Wool implements ICarriable, AutoCloseable {
         );
         this.barVisible = new AtomicBoolean(false);
         this.bossBar.setVisible(false);
-        this.managers.get(PlayerManager.class).registerBossBar(this.bossBar);
+        this.managers.get(PlayerManager.class).getValue().registerBossBar(this.bossBar);
 
         this.capping = new AtomicBoolean(false);
         this.cappingModifier = new AtomicInteger(0);
@@ -105,7 +105,7 @@ public class Wool implements ICarriable, AutoCloseable {
             item.setGravity(false);
         });
         item.setPersistent(true);
-        this.managers.get(EntityManager.class).addItemPickedUpEventListener(item, this::pickup);
+        this.managers.get(EntityManager.class).getValue().addItemPickedUpEventListener(item, this::pickup);
     }
 
     public void removeEntityFromWorld(){
@@ -113,7 +113,7 @@ public class Wool implements ICarriable, AutoCloseable {
             return;
 
         this.item.remove();
-        this.managers.get(EntityManager.class).removeItemPickedUpEventListener(item, this::pickup);
+        this.managers.get(EntityManager.class).getValue().removeItemPickedUpEventListener(item, this::pickup);
         this.item = null;
     }
 
@@ -123,7 +123,7 @@ public class Wool implements ICarriable, AutoCloseable {
             return;
         }
 
-        var managedPlayer = this.managers.get(PlayerManager.class).getPlayer(player);
+        var managedPlayer = this.managers.get(PlayerManager.class).getValue().getPlayer(player);
         if (managedPlayer == null)
             return;
 
@@ -133,7 +133,7 @@ public class Wool implements ICarriable, AutoCloseable {
         removeEntityFromWorld();
         carrier = managedPlayer;
         this.managers.getPlugin().getServer().broadcastMessage("Wool '" + name + "' has been picked up by '" + carrier.getPlayer().getDisplayName() + "'!");
-        this.managers.get(PlayerManager.class).addPlayerDeathListener(carrier, this::playerDeath);
+        this.managers.get(PlayerManager.class).getValue().addPlayerDeathListener(carrier, this::playerDeath);
         player.getInventory().setHelmet(new ItemStack(this.material));
         this.cappingModifier.set(20);
     }
@@ -147,7 +147,7 @@ public class Wool implements ICarriable, AutoCloseable {
 
         this.capping.set(false);
         placeEntityInWorld();
-        this.managers.get(BoundaryManager.class).removeWoolFromCapping(this);
+        this.managers.get(BoundaryManager.class).getValue().removeWoolFromCapping(this);
         this.cappedAmount.set(0);
         this.setBossBar();
         WoolTimer.unregisterWoolForTiming(this);
@@ -234,7 +234,7 @@ public class Wool implements ICarriable, AutoCloseable {
         capPointMarker.getWorld().setBlockData(blockLocation, this.block);
 
 
-        this.managers.get(EventManager.class).pushInternalEvent(new WoolCapturedEvent(this.carrier, this));
+        this.managers.get(EventManager.class).getValue().pushInternalEvent(new WoolCapturedEvent(this.carrier, this));
     }
 
     public void tick(){

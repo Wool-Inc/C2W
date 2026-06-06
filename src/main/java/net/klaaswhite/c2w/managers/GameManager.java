@@ -1,5 +1,6 @@
 package net.klaaswhite.c2w.managers;
 
+import net.klaaswhite.c2w.classes.Lazy;
 import net.klaaswhite.c2w.classes.ManagedTeam;
 import net.klaaswhite.c2w.classes.Wool;
 import net.klaaswhite.c2w.commands.base.BaseCommand;
@@ -14,7 +15,7 @@ import java.util.Hashtable;
 public class GameManager implements IManager {
 
     private final Managers managers;
-    private final EventManager eventManager;
+    private final Lazy<EventManager> eventManager;
 
     private GameState gameState;
 
@@ -38,12 +39,12 @@ public class GameManager implements IManager {
             return;
         }
 
-        eventManager.pushInternalEvent(new InitializeGameEvent(input));
+        eventManager.getValue().pushInternalEvent(new InitializeGameEvent(input));
         gameState = GameState.INITIALIZED;
     }
 
     public void preview(CommandInput input){
-        eventManager.pushInternalEvent(new PreviewRequestEvent(input));
+        eventManager.getValue().pushInternalEvent(new PreviewRequestEvent(input));
     }
 
     public void start(CommandInput input){
@@ -58,9 +59,9 @@ public class GameManager implements IManager {
 
         this.managers.getPlugin().getServer().broadcastMessage("Starting game!");
 
-        this.eventManager.registerInternalEvent(WoolCapturedEvent.class, this::woolCapped);
+        this.eventManager.getValue().registerInternalEvent(WoolCapturedEvent.class, this::woolCapped);
         gameState = GameState.STARTED;
-        this.eventManager.pushInternalEvent(new StartGameEvent());
+        this.eventManager.getValue().pushInternalEvent(new StartGameEvent());
     }
 
     public void end(CommandInput input){
@@ -80,7 +81,7 @@ public class GameManager implements IManager {
 
         this.managers.getPlugin().getServer().broadcastMessage("Game has ended!");
 
-        this.eventManager.pushInternalEvent(new EndGameEvent());
+        this.eventManager.getValue().pushInternalEvent(new EndGameEvent());
     }
 
     public void woolCapped(WoolCapturedEvent event){
