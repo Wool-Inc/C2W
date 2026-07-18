@@ -9,6 +9,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -20,18 +22,23 @@ jobs:
           cache: maven
 
       - name: Build and test
+        if: github.event_name != 'release'
         run: mvn clean package --no-transfer-progress
+
+      - name: Build and test (release)
+        if: github.event_name == 'release'
+        run: mvn clean package --no-transfer-progress -Drevision="${{ github.event.release.tag_name }}"
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           name: c2w-plugin
-          path: target/c2w-*.jar
+          path: target/C2W-*.jar
 
       - name: Attach to release
         if: github.event_name == 'release'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          JAR=$(ls target/c2w-*.jar | head -1)
+          JAR=$(ls target/C2W-*.jar | head -1)
           gh release upload "${{ github.event.release.tag_name }}" "$JAR" --clobber

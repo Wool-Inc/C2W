@@ -3,7 +3,7 @@
 Capture 2 Wool is a Paper/Spigot Minecraft minigame plugin. Two teams race to capture colored wools. The plugin uses a hexagonal (ports & adapters) architecture with explicit constructor injection — `App.java` is the single wiring root.
 
 **Package:** `net.klaaswhite.c2w`
-**Build:** Maven (`mvn clean package` → `target/c2w-1.0-SNAPSHOT.jar`)
+**Build:** Maven (`mvn clean package` → `target/C2W-<version>.jar`; default version `1.0-SNAPSHOT`, overridden by `-Drevision=<tag>` on release)
 **Requirements:** Java 25, Paper/Spigot 1.21+, ProtocolLib (soft-dependency)
 
 ## How to use these instructions

@@ -6,12 +6,13 @@
 
     <groupId>net.klaaswhite</groupId>
     <artifactId>c2w</artifactId>
-    <version>1.0-SNAPSHOT</version>
+    <version>${revision}</version>
     <packaging>jar</packaging>
 
     <name>c2w</name>
 
     <properties>
+        <revision>1.0-SNAPSHOT</revision>
         <java.version>25</java.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <bytebuddy-agent.version>1.17.7</bytebuddy-agent.version>
@@ -19,6 +20,7 @@
 
     <build>
         <defaultGoal>clean package</defaultGoal>
+        <finalName>C2W-${project.version}</finalName>
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>

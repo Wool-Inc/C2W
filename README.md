@@ -196,7 +196,7 @@ Use `/c2w setwooltimer <setting> <value>` to adjust live, or change defaults in 
 mvn clean package
 ```
 
-The compiled jar is at `target/c2w-1.0-SNAPSHOT.jar`.
+The compiled jar is at `target/C2W-<version>.jar` (default `target/C2W-1.0-SNAPSHOT.jar`).
 
 ### Testing
 
@@ -223,7 +223,7 @@ A GitHub Actions workflow builds and tests on every push/PR to `dev` and `main`.
    ```
 
 3. Create a [GitHub Release](https://github.com/klaaswhite/c2w/releases) for that tag.
-4. The CI workflow automatically attaches `c2w-v1.0.0.jar` to the release.
+4. The CI workflow automatically attaches `C2W-<tag>.jar` to the release.
 
 ---
 
