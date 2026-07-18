@@ -1,22 +1,24 @@
 name: c2w
 version: '${version}'
 
-main: net.klaaswhite.c2w.C2W
+main: net.klaaswhite.c2w.bootstrap.C2W
 api-version: '26.1'
 
 commands:
-#  specie:
-#    description: Sets class of player
-#    usage: /<command>
-  spawnertimer:
-    description: settings for the spawner timer
-
-  marker:
-    description: Creates markers
   c2w:
-    description: C2w commands
+    description: c2w game commands
+  marker:
+    description: Create, remove and list markers
   world:
-    description: world commands
+    description: Teleport between plugin-managed worlds
+  structure:
+    description: Manage structures (create, edit, define, save)
+    usage: /structure <subcommand>
+    permission: c2w.admin
+  layout:
+    description: Layout editor — place structures and save map layouts
+    usage: /layout <subcommand>
+    permission: c2w.admin
 
 depend:
   [ProtocolLib]

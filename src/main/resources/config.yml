@@ -1,0 +1,32 @@
+# C2W plugin configuration
+# Each top-level key is a feature area. See README.md for details.
+
+# --------------------------------------------------------------------------
+# Layouts
+# --------------------------------------------------------------------------
+# Layouts are stored as individual files at plugins/c2w/layouts/<name>.yml
+# Create and manage them with /c2w layout (editor command).
+# No layouts are bundled — create them via /c2w layout or place .yml files here.
+
+# --------------------------------------------------------------------------
+# Game flow
+# --------------------------------------------------------------------------
+# Where players are sent when a game ends.
+#   draft  - back to c2w_draft (the staging world for the current session)
+#   lobby  - back to c2w_lobby
+gameOverTarget: draft
+
+# If true, new players are teleported to c2w_lobby on join and have their
+# spawn set there, until /c2w init is called.
+lobbyAutoJoin: true
+
+# --------------------------------------------------------------------------
+# Resource extraction
+# --------------------------------------------------------------------------
+# If true, the plugin always overwrites structures.yml, structure NBTs, and
+# resource NBTs with the versions bundled in the JAR (use when updating plugin
+# with new/updated structures).
+# If false, only files that don't already exist are extracted from the JAR.
+#   true  — overwrite on every startup (use for plugin updates)
+#   false — only extract missing files, keep existing (safe for custom content)
+overrideOnStartup: false
