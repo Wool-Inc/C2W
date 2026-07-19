@@ -11,6 +11,7 @@ import net.klaaswhite.c2w.adapter.managers.ResourceManager;
 import net.klaaswhite.c2w.adapter.managers.StructureCreationManager;
 import net.klaaswhite.c2w.domain.managers.StructureManager;
 import net.klaaswhite.c2w.adapter.managers.WorldManager;
+import net.klaaswhite.c2w.adapter.managers.MarkerManager;
 import net.klaaswhite.c2w.domain.model.StructureData;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -98,6 +99,8 @@ public class StructureCommand extends BaseCommand {
 
         root.addChoice("resource", new ContextSensitiveRoot(buildResourceSubTree(), this::resourceRootChoices));
 
+        root.addChoice("marker", new ContextSensitiveRoot(buildMarkerSubTree(), this::markerRootChoices));
+
         root.addChoice("save", new CommandPiece(null, this::save));
         root.addChoice("discard", new CommandPiece(null, this::discard));
 
@@ -154,6 +157,36 @@ public class StructureCommand extends BaseCommand {
         resourceRoot.addChoice("visualize", new CommandPiece(null, this::toggleVisualize));
 
         return resourceRoot;
+    }
+
+    private TreeChoiceCommandPiece buildMarkerSubTree() {
+        var markerRoot = new TreeChoiceCommandPiece(null);
+
+        // place <name> - marks at targeted block
+        var placeHandler = new CommandPiece(null, this::placeGameMarker);
+        var placeWithName = new DynamicListChoiceCommandPiece(
+                placeHandler, null, this::gameMarkerNameSuggestions);
+        markerRoot.addChoice("place", placeWithName);
+
+        // placehere <name> - marks at player's standing position
+        var placeHereHandler = new CommandPiece(null, this::placeGameMarkerHere);
+        var placeHereWithName = new DynamicListChoiceCommandPiece(
+                placeHereHandler, null, this::gameMarkerNameSuggestions);
+        markerRoot.addChoice("placehere", placeHereWithName);
+
+        markerRoot.addChoice("list", new CommandPiece(null, this::listGameMarkers));
+
+        // remove <name> - removes marker at targeted block
+        var removeHandler = new CommandPiece(null, this::removeGameMarker);
+        var removeWithName = new DynamicListChoiceCommandPiece(
+                removeHandler, null, this::gameMarkerNameSuggestions);
+        markerRoot.addChoice("remove", removeWithName);
+
+        return markerRoot;
+    }
+
+    private List<String> gameMarkerNameSuggestions(CommandInput input) {
+        return new ArrayList<>(MarkerManager.MARKER_NAMES);
     }
 
     private List<String> typeNameSuggestions(CommandInput input) {
@@ -718,6 +751,80 @@ public class StructureCommand extends BaseCommand {
         return true;
     }
 
+    private boolean placeGameMarker(CommandInput input) {
+        if (isGameInProgress(input)) return true;
+        if (!(input.commandSender instanceof Player p)) return false;
+        if (!isCreationWorld(p)) {
+            p.sendMessage("This command can only be used in a creation world.");
+            return false;
+        }
+        if (input.strings.length < 3) {
+            p.sendMessage("Usage: /structure marker place <name>");
+            p.sendMessage("§eMarker names: wool, cap-<color>, spawnpoint, boundary-woolcap-pit-<1|2>, boundary-woolcap-elevator-<1|2>");
+            return false;
+        }
+        return creationManager.placeGameMarker(p, input.strings[2]);
+    }
+
+    private boolean placeGameMarkerHere(CommandInput input) {
+        if (isGameInProgress(input)) return true;
+        if (!(input.commandSender instanceof Player p)) return false;
+        if (!isCreationWorld(p)) {
+            p.sendMessage("This command can only be used in a creation world.");
+            return false;
+        }
+        if (input.strings.length < 3) {
+            p.sendMessage("Usage: /structure marker placehere <name>");
+            p.sendMessage("§eMarker names: wool, cap-<color>, spawnpoint, boundary-woolcap-pit-<1|2>, boundary-woolcap-elevator-<1|2>");
+            return false;
+        }
+        return creationManager.placeGameMarkerHere(p, input.strings[2]);
+    }
+
+    private boolean listGameMarkers(CommandInput input) {
+        if (isGameInProgress(input)) return true;
+        if (!(input.commandSender instanceof Player p)) return false;
+        if (!isCreationWorld(p)) {
+            p.sendMessage("This command can only be used in a creation world.");
+            return false;
+        }
+        String worldName = p.getWorld().getName();
+        var parts = parseCreationWorld(p);
+        String typeName = parts != null ? parts[0] : "";
+        String id = parts != null ? parts[1] : "";
+
+        var markers = creationManager.getGameMarkersGrouped(worldName);
+        if (markers.isEmpty()) {
+            p.sendMessage("No game markers found in " + typeName + "/" + id + ".");
+        } else {
+            p.sendMessage("Game markers in " + typeName + "/" + id + ":");
+            for (var entry : markers.entrySet()) {
+                String name = entry.getKey();
+                p.sendMessage("  " + name + ":");
+                var list = entry.getValue();
+                for (int i = 0; i < list.size(); i++) {
+                    var pos = list.get(i).getPosition();
+                    p.sendMessage("    [" + i + "] (" + pos.x() + ", " + pos.y() + ", " + pos.z() + ")");
+                }
+            }
+        }
+        return true;
+    }
+
+    private boolean removeGameMarker(CommandInput input) {
+        if (isGameInProgress(input)) return true;
+        if (!(input.commandSender instanceof Player p)) return false;
+        if (!isCreationWorld(p)) {
+            p.sendMessage("This command can only be used in a creation world.");
+            return false;
+        }
+        if (input.strings.length < 3) {
+            p.sendMessage("Usage: /structure marker remove <name>");
+            return false;
+        }
+        return creationManager.removeGameMarkerAt(p, input.strings[2]);
+    }
+
     private List<String> rootChoices(CommandInput input) {
         if (!(input.commandSender instanceof Player p)) {
             // Non-player: fall back to the full delegate choice list.
@@ -734,7 +841,7 @@ public class StructureCommand extends BaseCommand {
             return null;
         }
         if (isCreationWorld(p) || isResourceWorld(p)) {
-            return List.of("resource", "save", "discard");
+            return List.of("resource", "marker", "save", "discard");
         }
         // Lobby/overworld
         return List.of("define", "resize", "create", "modify", "list", "delete", "resource");
@@ -757,5 +864,20 @@ public class StructureCommand extends BaseCommand {
         }
         // Lobby/overworld
         return List.of("world");
+    }
+
+    private List<String> markerRootChoices(CommandInput input) {
+        if (!(input.commandSender instanceof Player p)) {
+            return null;
+        }
+        var world = p.getWorld();
+        if (world == null) return null;
+
+        var worldName = world.getName();
+        if (worldName.startsWith("c2w_create_")) {
+            return List.of("place", "placehere", "list", "remove");
+        }
+        // Resource worlds and lobby/overworld: markers are only placed in creation worlds.
+        return List.of();
     }
 }

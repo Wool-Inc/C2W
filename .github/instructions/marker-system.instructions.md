@@ -39,11 +39,21 @@ Uses `MinecraftManager.markers()` for all Bukkit access.
 ## `MarkerEntity` / `Markers`
 
 - `MarkerEntity` wraps a Bukkit `Marker`: `getPosition()`, `getPersistentData(key)`, `setPersistentData(key, value)`, `remove()`.
-- `Markers` (sub-interface of `MinecraftManager`) — `getMarkerKey()` (the `map_marker` `NamespacedKey`), `getMarkersInWorld(name)`, `spawnMarker(world, pos)`, `findMarkersInWorld(world, pdcKey, prefix)`.
+- `Markers` (sub-interface of `MinecraftManager`) — `getMarkerKey()` returns the **key portion only** (`"map_marker"`), NOT the full `NamespacedKey` string. Callers wrap it in `new NamespacedKey(plugin, key)`, so returning `"c2w:map_marker"` would throw `IllegalArgumentException` (`:` is illegal in the key part). `getMarkersInWorld(name)`, `spawnMarker(world, pos)`, `findMarkersInWorld(world, pdcKey, prefix)`.
 
 ## `/marker command`
 
-`MarkerCommand` (`/marker`) — `create <at> <name>`, `remove <name>`, `list`. Tab-completion uses `MarkerManager.MARKER_NAMES`.
+`MarkerCommand` (`/marker`) — `create <at> <name>`, `remove <name>`, `list`. Tab-completion uses `MarkerManager.MARKER_NAMES` plus `spawnpoint`. The `create` subcommand is for placing markers in the **live game world** (blocked after game start).
+
+## `/structure marker command` (creation worlds)
+
+Game markers (wools, spawnpoints, capture areas) are placed inside a structure **creation world** via `StructureCommand` (`/structure marker`), separate from the resource system:
+- `place <name>` — marks the targeted block (within 5).
+- `placehere <name>` — marks the player's standing position.
+- `list` — lists all game markers in the creation world, grouped by name.
+- `remove <name>` — removes the named marker at the targeted block.
+
+These use `StructureCreationManager.placeGameMarker` / `placeGameMarkerHere` / `getGameMarkersGrouped` / `removeGameMarkerAt`, which spawn a `Marker` and set the `map_marker` PDC exactly like `/marker create`. Tab-completion for `<name>` uses `MarkerManager.MARKER_NAMES`.
 
 ## Common pitfalls (markers)
 
@@ -51,3 +61,4 @@ Uses `MinecraftManager.markers()` for all Bukkit access.
 - **Markers are locked after game start** (`initialized`); `createMarker` refuses post-start.
 - **Two PDC keys:** `map_marker` (this system) vs `resourceinstance` (resource system). Keep them separate.
 - **Boundary boxes** require both `-1` and `-2` markers present, or `BoundaryManager.onStartGame` skips that box.
+- **`getMarkerKey()` returns the bare key** (`"map_marker"`), never `"c2w:map_marker"`.

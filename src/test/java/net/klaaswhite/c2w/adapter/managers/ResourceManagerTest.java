@@ -175,6 +175,107 @@ class ResourceManagerTest {
         verify(player).sendMessage(contains("No active resource session"));
     }
 
+    // --- markResourceBlock: mode driven by defined resource type ---
+
+    /** Open a resource session for the given type so markResourceBlock proceeds past the session guard. */
+    private void openResourceSession(ResourceManager rm, Player player, String typeName, org.bukkit.World world) {
+        when(structureTypeConfig.getDimensions(typeName)).thenReturn(new int[]{5, 5, 5});
+        when(world.getBlockAt(anyInt(), anyInt(), anyInt())).thenReturn(mock(org.bukkit.block.Block.class));
+        when(mc.worlds().createVoidWorld(eq("c2w_resource_" + typeName), any())).thenReturn(world);
+        try (var bukkit = mockBukkit(world)) {
+            rm.openResourceWorld(player, typeName);
+        }
+    }
+
+    /** Build a targeted block that reports as a container (chest/barrel/etc.). */
+    private org.bukkit.block.Block chestTarget(org.bukkit.World world) {
+        var target = mock(org.bukkit.block.Block.class);
+        var container = mock(org.bukkit.block.Container.class);
+        var loc = mock(org.bukkit.Location.class);
+        when(target.getState()).thenReturn(container);
+        when(target.getWorld()).thenReturn(world);
+        when(target.getLocation()).thenReturn(loc);
+        when(loc.add(anyDouble(), anyDouble(), anyDouble())).thenReturn(loc);
+        when(world.spawn(eq(loc), eq(org.bukkit.entity.Marker.class), any())).thenReturn(mock(org.bukkit.entity.Marker.class));
+        return target;
+    }
+
+    /** Build a targeted block that reports as a plain (non-container) block. */
+    private org.bukkit.block.Block plainTarget(org.bukkit.World world) {
+        var target = mock(org.bukkit.block.Block.class);
+        var state = mock(org.bukkit.block.BlockState.class);
+        var loc = mock(org.bukkit.Location.class);
+        when(target.getState()).thenReturn(state);
+        when(target.getWorld()).thenReturn(world);
+        when(target.getLocation()).thenReturn(loc);
+        when(loc.add(anyDouble(), anyDouble(), anyDouble())).thenReturn(loc);
+        when(world.spawn(eq(loc), eq(org.bukkit.entity.Marker.class), any())).thenReturn(mock(org.bukkit.entity.Marker.class));
+        return target;
+    }
+
+    @Test
+    @DisplayName("block-defined resource targeting a chest routes to block mode (multiple markers, count message)")
+    void markResourceBlockBlockTypeTargetsChestUsesBlockMode() {
+        var player = mock(Player.class);
+        when(player.getName()).thenReturn("Alice");
+        var world = mock(org.bukkit.World.class);
+        when(mc.markers().findMarkersInWorld(anyString(), anyString(), anyString())).thenReturn(List.of());
+        when(structureTypeConfig.getResourceType("castle", "myblock")).thenReturn("block");
+
+        var rm = createManager();
+        openResourceSession(rm, player, "castle", world);
+        var target = chestTarget(world);
+        when(player.getTargetBlockExact(5)).thenReturn(target);
+
+        boolean result = rm.markResourceBlock(player, "castle", "myblock");
+
+        assertTrue(result);
+        // Block mode allows multiple markers and reports a count.
+        verify(player).sendMessage(contains("marker(s)"));
+        verify(world).spawn(eq(target.getLocation()), eq(org.bukkit.entity.Marker.class), any());
+    }
+
+    @Test
+    @DisplayName("container-defined resource targeting a chest routes to container mode (single marker, no count)")
+    void markResourceBlockContainerTypeTargetsChestUsesContainerMode() {
+        var player = mock(Player.class);
+        when(player.getName()).thenReturn("Alice");
+        var world = mock(org.bukkit.World.class);
+        when(mc.markers().findMarkersInWorld(anyString(), anyString(), anyString())).thenReturn(List.of());
+        when(structureTypeConfig.getResourceType("castle", "chest")).thenReturn("container");
+
+        var rm = createManager();
+        openResourceSession(rm, player, "castle", world);
+        var target = chestTarget(world);
+        when(player.getTargetBlockExact(5)).thenReturn(target);
+
+        boolean result = rm.markResourceBlock(player, "castle", "chest");
+
+        assertTrue(result);
+        verify(player).sendMessage(contains("Marked container"));
+    }
+
+    @Test
+    @DisplayName("container-defined resource targeting a non-container block fails with a helpful message")
+    void markResourceBlockContainerTypeTargetsNonContainerFails() {
+        var player = mock(Player.class);
+        when(player.getName()).thenReturn("Alice");
+        var world = mock(org.bukkit.World.class);
+        when(structureTypeConfig.getResourceType("castle", "chest")).thenReturn("container");
+
+        var rm = createManager();
+        openResourceSession(rm, player, "castle", world);
+        var target = plainTarget(world);
+        when(player.getTargetBlockExact(5)).thenReturn(target);
+
+        boolean result = rm.markResourceBlock(player, "castle", "chest");
+
+        assertFalse(result);
+        verify(player).sendMessage(contains("defined as a container resource"));
+        // No marker should be spawned when the block type does not match the definition.
+        verify(world, never()).spawn(any(), eq(org.bukkit.entity.Marker.class), any());
+    }
+
     // --- saveAndExit / discardAndExit: no session ---
 
     @Test

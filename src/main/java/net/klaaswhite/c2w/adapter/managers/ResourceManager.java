@@ -133,10 +133,15 @@ public class ResourceManager implements AutoCloseable {
 
     /**
          * Mark the player's targeted block as a resource instance.
-         * If the block is a container (chest, barrel, etc.), enters container mode
-         * where the container's inventory contents define multiple resource variants.
-         * Otherwise marks it as a single variant (block mode).
-         * A resource can use either container mode or block mode, never both.
+         * The mode (block vs. container) is driven by the resource's defined type in
+         * structure.yml (see {@link FolderStructureTypeConfig#getResourceType}), matching
+         * how GameManager.placeResources reads it at placement time. This keeps marking
+         * consistent with the resource definition rather than the targeted block's type.
+     * If the resource is not yet defined, it defaults to block mode (multiple markers,
+     * count message). Container mode has special inventory-slot semantics and must be
+     * opted into explicitly via /structure resource define &lt;container&gt; ..., so it is
+     * never inferred from the targeted block's type. A resource can use either container
+     * mode or block mode, never both.
          */
         public boolean markResourceBlock(Player player, String typeName, String resourceId) {
             String worldName = resourceWorldName(typeName);
@@ -151,11 +156,25 @@ public class ResourceManager implements AutoCloseable {
                 return false;
             }
 
-            if (target.getState() instanceof Container container) {
-                return markContainerResource(player, container, typeName, resourceId, worldName, target);
-            } else {
+            String resourceType = structureTypeConfig.getResourceType(typeName, resourceId);
+            if ("container".equals(resourceType)) {
+                if (target.getState() instanceof Container container) {
+                    return markContainerResource(player, container, typeName, resourceId, worldName, target);
+                }
+                player.sendMessage("Resource '" + resourceId + "' is defined as a container resource. "
+                        + "Look at a container block (chest, barrel, etc.) to mark it.");
+                return false;
+            }
+            if ("block".equals(resourceType)) {
                 return markBlockResource(player, typeName, resourceId, worldName, target);
             }
+
+            // Undefined resource: default to block mode (multiple markers, count message).
+            // Inferring the mode from the targeted block's type was wrong: a chest/barrel
+            // intended as a block-mode spot was silently routed to container mode (single
+            // marker, no count). Container mode has special inventory-slot semantics and
+            // should be opted into explicitly via /structure resource define <container> ...
+            return markBlockResource(player, typeName, resourceId, worldName, target);
         }
 
     /**

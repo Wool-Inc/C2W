@@ -204,8 +204,6 @@ class MarkerCommandTest {
         assertTrue(choices.contains("wool"));
         assertTrue(choices.contains("cap-red"));
         assertTrue(choices.contains("spawnpoint"));
-        assertTrue(choices.contains("structure-"));
-        assertTrue(choices.contains("resourcespot-"));
     }
 
     @Test

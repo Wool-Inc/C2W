@@ -229,13 +229,14 @@ public class GameManager implements AutoCloseable {
             var logger = java.util.logging.Logger.getLogger("C2W");
 
             // placements-based layouts store structure center (as shown by
-            // the editor wireframe). Structure.place() treats the position as
-            // the NBT origin corner and the structure extends from that corner
-            // in a direction that depends on rotation:
+            // the editor wireframe). Structure.place() rotates the NBT around
+            // the origin corner, so the structure extends from that corner in a
+            // rotation-dependent direction (verified against Minecraft's
+            // transformedBlockPos):
             //   NONE (yaw≈0):   extends +X, +Z → corner = center − (w/2, d/2)
-            //   CW_90  (yaw≈90):  extends +X, −Z → corner = center − (w/2, −d/2)
+            //   CW_90  (yaw≈90):  extends −X, +Z → corner = center + (w/2, −d/2)
             //   CW_180 (yaw≈180): extends −X, −Z → corner = center + (w/2, d/2)
-            //   CCW_90 (yaw≈270): extends −X, +Z → corner = center + (w/2, −d/2)
+            //   CCW_90 (yaw≈270): extends +X, −Z → corner = center − (w/2, −d/2)
             // Grid layouts already compute worldPosition as the grid-snapped corner.
             if (layout.isPlacementsBased()) {
                 int[] dims = structureTypeConfig.getDimensions(cell.typeName());
@@ -244,12 +245,12 @@ public class GameManager implements AutoCloseable {
                     int hd = dims[2] / 2;
                     var rot = yawToRotation(cell.yaw());
                     int dx = switch (rot) {
-                        case NONE, CLOCKWISE_90           -> -hw;
-                        case CLOCKWISE_180, COUNTERCLOCKWISE_90 ->  hw;
+                        case NONE, COUNTERCLOCKWISE_90    -> -hw;
+                        case CLOCKWISE_90, CLOCKWISE_180  ->  hw;
                     };
                     int dz = switch (rot) {
-                        case NONE, COUNTERCLOCKWISE_90    -> -hd;
-                        case CLOCKWISE_90, CLOCKWISE_180  ->  hd;
+                        case NONE, CLOCKWISE_90           -> -hd;
+                        case CLOCKWISE_180, COUNTERCLOCKWISE_90 -> hd;
                     };
                     pos = new BlockPos(pos.x() + dx, pos.y(), pos.z() + dz);
                 }
@@ -328,12 +329,13 @@ public class GameManager implements AutoCloseable {
         int[] filterDims = structureTypeConfig.getDimensions(typeName);
         if (filterDims != null) {
             // ponytail: rotated structures extend in different directions — compute rotated AABB
+            // (must match the corner offset in start(): NONE +X/+Z, CW_90 −X/+Z, CW_180 −X/−Z, CCW_90 +X/−Z)
             int w = filterDims[0], h = filterDims[1], d = filterDims[2];
             int xMin, xMax, zMin, zMax;
             switch (rotation) {
-                case CLOCKWISE_90 ->          { xMin = pos.x();       xMax = pos.x() + w;  zMin = pos.z() - d;  zMax = pos.z(); }
+                case CLOCKWISE_90 ->          { xMin = pos.x() - w;   xMax = pos.x();      zMin = pos.z();      zMax = pos.z() + d; }
                 case CLOCKWISE_180 ->         { xMin = pos.x() - w;   xMax = pos.x();      zMin = pos.z() - d;  zMax = pos.z(); }
-                case COUNTERCLOCKWISE_90 ->   { xMin = pos.x() - w;   xMax = pos.x();      zMin = pos.z();      zMax = pos.z() + d; }
+                case COUNTERCLOCKWISE_90 ->   { xMin = pos.x();       xMax = pos.x() + w;  zMin = pos.z() - d;  zMax = pos.z(); }
                 default ->                    { xMin = pos.x();       xMax = pos.x() + w;  zMin = pos.z();      zMax = pos.z() + d; }
             }
             final int fxMin = xMin, fxMax = xMax, fzMin = zMin, fzMax = zMax;

@@ -319,6 +319,90 @@ public class StructureCreationManager implements AutoCloseable {
     }
 
     // ------------------------------------------------------------------
+    // Game markers (wools, spawnpoints, capture areas)
+    // ------------------------------------------------------------------
+    // These are distinct from resource spots: they mark locations the game
+    // itself uses (wool spawns, team spawn points, capture boundaries). They
+    // are stored under the marker system's `map_marker` PDC key, exactly like
+    // markers placed in the live game world via /marker create.
+
+    /** Place a game marker at the targeted block (within 5 blocks). */
+    public boolean placeGameMarker(Player player, String markerName) {
+        String worldName = player.getWorld().getName();
+        var block = player.getTargetBlockExact(5);
+        if (block == null) {
+            player.sendMessage("No block targeted. Look at a block within 5 blocks.");
+            return false;
+        }
+        MarkerEntity markerEntity = mc.markers().spawnMarker(worldName,
+                new BlockPos(block.getX(), block.getY(), block.getZ()));
+        if (markerEntity == null) {
+            player.sendMessage("Failed to spawn marker.");
+            return false;
+        }
+        markerEntity.setPersistentData(mc.markers().getMarkerKey(), markerName);
+        player.sendMessage("Placed game marker '" + markerName + "' at ("
+                + block.getX() + ", " + block.getY() + ", " + block.getZ() + ").");
+        return true;
+    }
+
+    /** Place a game marker at the player's standing position. */
+    public boolean placeGameMarkerHere(Player player, String markerName) {
+        String worldName = player.getWorld().getName();
+        var pos = mc.players().getPosition(player.getName());
+        if (pos == null) {
+            player.sendMessage("Could not determine your position.");
+            return false;
+        }
+        MarkerEntity markerEntity = mc.markers().spawnMarker(worldName, pos);
+        if (markerEntity == null) {
+            player.sendMessage("Failed to spawn marker.");
+            return false;
+        }
+        markerEntity.setPersistentData(mc.markers().getMarkerKey(), markerName);
+        player.sendMessage("Placed game marker '" + markerName + "' at ("
+                + pos.x() + ", " + pos.y() + ", " + pos.z() + ").");
+        return true;
+    }
+
+    /** List all game markers in a creation world, grouped by name. */
+    public Map<String, List<MarkerEntity>> getGameMarkersGrouped(String worldName) {
+        Map<String, List<MarkerEntity>> grouped = new HashMap<>();
+        var markers = mc.markers().getMarkersInWorld(worldName);
+        for (var mm : markers) {
+            String name = mm.getName();
+            if (name == null || name.isEmpty()) continue;
+            grouped.computeIfAbsent(name, k -> new ArrayList<>()).add(mm);
+        }
+        return grouped;
+    }
+
+    /** Remove a game marker by name at the targeted block (within 5 blocks). */
+    public boolean removeGameMarkerAt(Player player, String markerName) {
+        String worldName = player.getWorld().getName();
+        var block = player.getTargetBlockExact(5);
+        if (block == null) {
+            player.sendMessage("No block targeted. Look at a block within 5 blocks.");
+            return false;
+        }
+        var markers = mc.markers().getMarkersInWorld(worldName);
+        BlockPos targetPos = new BlockPos(block.getX(), block.getY(), block.getZ());
+        for (var mm : markers) {
+            if (markerName.equals(mm.getName())
+                    && mm.getPosition().x() == targetPos.x()
+                    && mm.getPosition().y() == targetPos.y()
+                    && mm.getPosition().z() == targetPos.z()) {
+                mm.remove();
+                player.sendMessage("Removed game marker '" + markerName + "'.");
+                return true;
+            }
+        }
+        player.sendMessage("No game marker '" + markerName + "' found at your targeted block.");
+        return false;
+    }
+
+
+    // ------------------------------------------------------------------
     // Event handlers
     // ------------------------------------------------------------------
 

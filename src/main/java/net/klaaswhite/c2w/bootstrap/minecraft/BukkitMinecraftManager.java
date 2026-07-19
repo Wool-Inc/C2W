@@ -616,7 +616,10 @@ public class BukkitMinecraftManager implements MinecraftManager, AutoCloseable {
 
         @Override
         public String getMarkerKey() {
-            return markerKey.toString();
+            // Return the key portion only. Callers wrap this in
+            // `new NamespacedKey(plugin, key)`, so a full "c2w:map_marker"
+            // string would be illegal (':' is not allowed in the key part).
+            return markerKey.getKey();
         }
 
         @Override

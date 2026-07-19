@@ -88,14 +88,8 @@ public class MarkerCommand extends BaseCommand {
     }
 
     private List<String> getDynamicMarkerSuggestions(CommandInput commandInput) {
-        String current = commandInput.strings.length > 0
-                ? commandInput.strings[commandInput.strings.length - 1]
-                : "";
-
         List<String> suggestions = new ArrayList<>(MarkerManager.MARKER_NAMES);
         suggestions.add("spawnpoint");
-        suggestions.add("structure-");
-        suggestions.add("resourcespot-");
         return suggestions;
     }
 
