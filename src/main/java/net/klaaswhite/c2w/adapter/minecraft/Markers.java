@@ -12,7 +12,7 @@ import java.util.List;
  * Markers are Bukkit {@code Marker} entities with a persistent data key
  * {@code map_marker} (a {@code NamespacedKey}) that identifies them as
  * C2W markers. Marker names are plain strings following conventions like
- * {@code wool-<color>}, {@code cap-<color>}, etc.
+ * {@code wool}, {@code spawnpoint}, {@code boundary-woolcap-pit-<1|2>}, etc.
  */
 public interface Markers {
 

@@ -260,7 +260,7 @@ class LayoutEditorCommandTest {
         when(world.getName()).thenReturn("c2w_lobby");
         when(player.getWorld()).thenReturn(world);
 
-        CommandInput in = input(player, "setspawn", "0", "red");
+        CommandInput in = input(player, "setspawn", "red");
         boolean result = dispatch(in);
 
         assertFalse(result);
@@ -318,8 +318,8 @@ class LayoutEditorCommandTest {
     @Test
     @DisplayName("setspawn autocomplete shows red/blue teams")
     void setspawnAutocomplete(@Mock Player player) {
-        // setspawn <index> <team> — walk to team node
-        CommandInput in = input(player, "setspawn", "0", "");
+        // setspawn <team> — walk to team node
+        CommandInput in = input(player, "setspawn", "");
         List<String> choices = tabComplete(in);
 
         assertTrue(choices.contains("red"));

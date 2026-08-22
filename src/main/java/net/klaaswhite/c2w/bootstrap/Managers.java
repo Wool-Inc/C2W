@@ -2,6 +2,7 @@ package net.klaaswhite.c2w.bootstrap;
 
 import net.klaaswhite.c2w.adapter.managers.EntityManager;
 import net.klaaswhite.c2w.adapter.managers.EventManager;
+import net.klaaswhite.c2w.adapter.managers.EnvironmentManager;
 import net.klaaswhite.c2w.adapter.managers.PlayerManager;
 import net.klaaswhite.c2w.adapter.managers.WorldManager;
 import net.klaaswhite.c2w.bootstrap.config.PluginConfig;
@@ -10,7 +11,9 @@ import net.klaaswhite.c2w.adapter.managers.BoundaryManager;
 import net.klaaswhite.c2w.adapter.managers.GameManager;
 import net.klaaswhite.c2w.adapter.managers.MarkerManager;
 import net.klaaswhite.c2w.adapter.managers.ResourceManager;
+import net.klaaswhite.c2w.adapter.managers.ScoreboardManager;
 import net.klaaswhite.c2w.adapter.managers.StructureCreationManager;
+import net.klaaswhite.c2w.adapter.managers.TeamSelectionManager;
 import net.klaaswhite.c2w.domain.managers.StructureManager;
 import net.klaaswhite.c2w.adapter.managers.LayoutEditorManager;
 import net.klaaswhite.c2w.domain.managers.LayoutManager;
@@ -31,6 +34,7 @@ public class Managers {
     public PluginConfig pluginConfig;
     public EventManager eventManager;
     public WorldManager worldManager;
+    public EnvironmentManager environmentManager;
     public EntityManager entityManager;
     public PlayerManager playerManager;
     public MarkerManager markerManager;
@@ -42,8 +46,10 @@ public class Managers {
     public FolderStructureTypeConfig structureTypeConfig;
     public GameManager gameManager;
     public WoolTimer woolTimer;
+    public TeamSelectionManager teamSelectionManager;
     public LayoutEditorManager layoutEditorManager;
     public LayoutManager layoutManager;
+    public ScoreboardManager scoreboardManager;
 
     public Managers(JavaPlugin plugin) {
         this.plugin = plugin;

@@ -93,8 +93,7 @@ Bukkit `Marker` entities with persistent data key `map_marker` (`NamespacedKey`)
 
 | Pattern | Purpose |
 |---|---|
-| `wool-<color>` | Wool spawn points (`wool-red`, `wool-green`, `wool-blue`, `wool-yellow`) |
-| `cap-<color>` | Capture points (matching color) |
+| `wool` | Generic wool spawn point (colors assigned by order at game start) |
 | `boundary-woolcap-pit-1` / `-2` | Capture pit bounding box |
 | `boundary-woolcap-elevator-1` / `-2` | Elevator (instant capture) bounding box |
 | `resourcespot-<structureId>-<resourceId>-<counter>` | Resource placement spots |

@@ -25,8 +25,6 @@ public interface Wool extends AutoCloseable {
 
     String getWorldName();
 
-    String getCapMarkerName();
-
     ManagedPlayer getCarrier();
 
     boolean isCarried();

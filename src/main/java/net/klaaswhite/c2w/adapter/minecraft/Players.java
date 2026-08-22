@@ -37,6 +37,13 @@ public interface Players {
     /** Teleport the player to a specific position in a specific world. */
     void teleportToWorld(String playerName, BlockPos pos, String worldName);
 
+    /**
+     * Set the player's respawn (bed) location. Does not teleport the player.
+     * When {@code force} is true, the location is set even if it is unsafe
+     * (no bed nearby), which is typical for custom game worlds.
+     */
+    void setRespawnLocation(String playerName, BlockPos pos, String worldName, boolean force);
+
     /** Send a chat message to the player. */
     void sendMessage(String playerName, String message);
 
@@ -48,6 +55,9 @@ public interface Players {
 
     /** Add a potion effect to the player with the given duration (ticks) and amplifier. */
     void addPotionEffect(String playerName, PotionEffectType type, int duration, int amplifier);
+
+    /** Check whether the player currently has an active potion effect of the given type. */
+    boolean hasPotionEffect(String playerName, PotionEffectType type);
 
     /** Remove all active potion effects from the player. */
     void removePotionEffects(String playerName);
@@ -69,6 +79,9 @@ public interface Players {
 
     /** Play a sound to the player by name at the given volume and pitch. */
     void playSound(String playerName, String soundName, float volume, float pitch);
+
+    /** Set the player's game mode by name ("SURVIVAL", "SPECTATOR", etc.). */
+    void setGameMode(String playerName, String gameMode);
 
     /**
      * Spawn colored dust particles at a position in a world.

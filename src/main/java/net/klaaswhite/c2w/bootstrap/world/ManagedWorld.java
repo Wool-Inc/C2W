@@ -19,6 +19,11 @@ public class ManagedWorld {
 
     private final String name;
     private final boolean isTransient;
+    private final boolean placeCenterCross;
+    /** When true, a flat filled square of bedrock is placed at the world origin. */
+    private final boolean placeCenterPlatform;
+    /** Half-width (in blocks) of the filled platform: the platform is (2*halfWidth+1) wide. */
+    private final int centerPlatformHalfWidth;
     private final WorldCreator creator;
     private final @Nullable Worlds worlds;
     private BlockPos spawnPos = DEFAULT_SPAWN_POS;
@@ -38,10 +43,32 @@ public class ManagedWorld {
      * When {@code worlds} is null, Bukkit statics are used as a fallback.
      */
     public ManagedWorld(String name, boolean isTransient, @Nullable Worlds worlds) {
+        this(name, isTransient, worlds, true);
+    }
+
+    /**
+     * Construct a managed world. When {@code placeCenterCross} is true, a 5-block
+     * bedrock cross is placed at the world origin on creation. When
+     * {@code placeCenterPlatform} is true, a flat square platform of bedrock
+     * ({@code 2*centerPlatformHalfWidth+1} wide) is placed instead — used by the
+     * lobby so more players fit on the waiting area. When both are false nothing
+     * is placed at the origin (the game world passes false so its spawn points
+     * come from layout SPAWN structures instead).
+     */
+    public ManagedWorld(String name, boolean isTransient, @Nullable Worlds worlds,
+            boolean placeCenterCross, boolean placeCenterPlatform, int centerPlatformHalfWidth) {
         this.name = name;
         this.isTransient = isTransient;
         this.worlds = worlds;
+        this.placeCenterCross = placeCenterCross;
+        this.placeCenterPlatform = placeCenterPlatform;
+        this.centerPlatformHalfWidth = centerPlatformHalfWidth;
         this.creator = makeCreator(name);
+    }
+
+    /** Kept for callers that only toggle the legacy center cross (e.g. the game world). */
+    public ManagedWorld(String name, boolean isTransient, @Nullable Worlds worlds, boolean placeCenterCross) {
+        this(name, isTransient, worlds, placeCenterCross, false, 0);
     }
 
     private static WorldCreator makeCreator(String name) {
@@ -82,15 +109,17 @@ public class ManagedWorld {
 
     /**
      * Load the world, creating it if it doesn't exist. Returns the loaded
-     * world, or null if it could not be created.
+     * world, or null if it could not be created. Runs {@link #initializeWorld}
+     * on both creation and load so persistent wait areas (e.g. the lobby
+     * platform) are always present even on worlds created by older versions.
      */
     public @Nullable World loadOrCreate() {
         var w = getWorld();
         if (w == null) {
             w = createWorld();
             if (w == null) return null;
-            initializeWorld(w);
         }
+        initializeWorld(w);
         return w;
     }
 
@@ -155,11 +184,20 @@ public class ManagedWorld {
     }
 
     protected void initializeWorld(World world) {
-        world.getBlockAt(0, 64, 0).setType(Material.BEDROCK);
-        world.getBlockAt(1, 64, 0).setType(Material.BEDROCK);
-        world.getBlockAt(-1, 64, 0).setType(Material.BEDROCK);
-        world.getBlockAt(0, 64, 1).setType(Material.BEDROCK);
-        world.getBlockAt(0, 64, -1).setType(Material.BEDROCK);
+        if (placeCenterPlatform) {
+            // Flat filled platform: more room for players waiting in the lobby.
+            for (int x = -centerPlatformHalfWidth; x <= centerPlatformHalfWidth; x++) {
+                for (int z = -centerPlatformHalfWidth; z <= centerPlatformHalfWidth; z++) {
+                    world.getBlockAt(x, 64, z).setType(Material.BEDROCK);
+                }
+            }
+        } else if (placeCenterCross) {
+            world.getBlockAt(0, 64, 0).setType(Material.BEDROCK);
+            world.getBlockAt(1, 64, 0).setType(Material.BEDROCK);
+            world.getBlockAt(-1, 64, 0).setType(Material.BEDROCK);
+            world.getBlockAt(0, 64, 1).setType(Material.BEDROCK);
+            world.getBlockAt(0, 64, -1).setType(Material.BEDROCK);
+        }
         world.setSpawnLocation(new Location(world, 0, 65, 0));
         this.spawnPos = new BlockPos(0, 65, 0);
     }

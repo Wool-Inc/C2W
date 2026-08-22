@@ -42,10 +42,9 @@ class ModelPojoTest {
     @Test
     @DisplayName("LayoutPlacement record stores all components")
     void layoutPlacementStoresComponents() {
-        var placement = new LayoutPlacement("arena", "main", 100, 64, -200);
+        var placement = new LayoutPlacement("arena", 100, 64, -200);
 
         assertEquals("arena", placement.typeName());
-        assertEquals("main", placement.id());
         assertEquals(100, placement.x());
         assertEquals(64, placement.y());
         assertEquals(-200, placement.z());
@@ -54,9 +53,9 @@ class ModelPojoTest {
     @Test
     @DisplayName("LayoutPlacement equality and hashCode")
     void layoutPlacementEquality() {
-        var a = new LayoutPlacement("arena", "main", 100, 64, -200);
-        var b = new LayoutPlacement("arena", "main", 100, 64, -200);
-        var c = new LayoutPlacement("arena", "alt", 100, 64, -200);
+        var a = new LayoutPlacement("arena", 100, 64, -200);
+        var b = new LayoutPlacement("arena", 100, 64, -200);
+        var c = new LayoutPlacement("dungeon", 100, 64, -200);
 
         assertEquals(a, b);
         assertEquals(a.hashCode(), b.hashCode());
@@ -66,12 +65,13 @@ class ModelPojoTest {
     @Test
     @DisplayName("LayoutPlacement toString is meaningful")
     void layoutPlacementToString() {
-        var placement = new LayoutPlacement("arena", "main", 100, 64, -200);
+        var placement = new LayoutPlacement("arena", 100, 64, -200);
         var str = placement.toString();
 
         assertTrue(str.contains("arena"));
-        assertTrue(str.contains("main"));
         assertTrue(str.contains("100"));
+        assertTrue(str.contains("64"));
+        assertTrue(str.contains("-200"));
     }
 
     // --- ItemStackRef ---

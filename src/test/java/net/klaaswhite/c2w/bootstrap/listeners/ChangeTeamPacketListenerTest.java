@@ -89,20 +89,20 @@ class ChangeTeamPacketListenerTest {
     }
 
     @Test
-    @DisplayName("ADD action (0) calls addPlayersToTeam")
+    @DisplayName("ADD ENTITIES action (3) calls addPlayersToTeam")
     void addAction() {
         var players = List.of("Alice", "Bob");
-        listener.onPacketSending(eventWith("Red", players, 0));
+        listener.onPacketSending(eventWith("Red", players, 3));
 
         verify(playerManager).addPlayersToTeam("Red", players);
         verify(playerManager, never()).removePlayersFromTeam(any(), any());
     }
 
     @Test
-    @DisplayName("REMOVE action (1) calls removePlayersFromTeam")
+    @DisplayName("REMOVE ENTITIES action (4) calls removePlayersFromTeam")
     void removeAction() {
         var players = List.of("Alice");
-        listener.onPacketSending(eventWith("Blue", players, 1));
+        listener.onPacketSending(eventWith("Blue", players, 4));
 
         verify(playerManager).removePlayersFromTeam("Blue", players);
         verify(playerManager, never()).addPlayersToTeam(any(), any());

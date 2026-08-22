@@ -6,6 +6,7 @@ import net.klaaswhite.c2w.domain.game.WoolTimer;
 import net.klaaswhite.c2w.domain.events.StartGameEvent;
 import net.klaaswhite.c2w.domain.events.WoolCapturedEvent;
 import net.klaaswhite.c2w.domain.events.WoolDroppedEvent;
+import net.klaaswhite.c2w.domain.events.WoolPickedUpEvent;
 import net.klaaswhite.c2w.domain.model.DomainBoundingBox;
 import net.klaaswhite.c2w.domain.model.ManagedTeam;
 import org.bukkit.event.entity.PlayerDeathEvent;
@@ -32,6 +33,7 @@ public class BoundaryManager implements AutoCloseable {
         this.eventManager.registerInternalEvent(StartGameEvent.class, this::onStartGame);
         this.eventManager.registerInternalEvent(WoolDroppedEvent.class, this::onWoolDropped);
         this.eventManager.registerInternalEvent(WoolCapturedEvent.class, this::onWoolCaptured);
+        this.eventManager.registerInternalEvent(WoolPickedUpEvent.class, this::onWoolPickedUp);
     }
 
     public void onStartGame(StartGameEvent event) {
@@ -73,11 +75,19 @@ public class BoundaryManager implements AutoCloseable {
     }
 
     public void onWoolDropped(WoolDroppedEvent event) {
-        engine.onWoolDropped(event.getWool());
+        var wool = event.getWool();
+        if (wool != null) engine.onWoolDropped(wool);
+    }
+
+    public void onWoolPickedUp(WoolPickedUpEvent event) {
+        var wool = event.getWool();
+        if (wool == null) return;
+        engine.onWoolPickedUp(wool);
     }
 
     public void onWoolCaptured(WoolCapturedEvent event) {
-        engine.onWoolCaptured(event.getWool());
+        var wool = event.getWool();
+        if (wool != null) engine.onWoolCaptured(wool);
     }
 
     @Override

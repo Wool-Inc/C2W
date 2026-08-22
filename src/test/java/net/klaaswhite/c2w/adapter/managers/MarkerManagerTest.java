@@ -37,7 +37,7 @@ class MarkerManagerTest {
 
         when(mc.players()).thenReturn(players);
         when(mc.markers()).thenReturn(markers);
-        when(markers.getMarkerKey()).thenReturn("c2w:map_marker");
+        when(markers.getMarkerKey()).thenReturn("map_marker");
         when(markers.getMarkersInWorld(anyString())).thenReturn(List.of());
         managers.woolTimer = new net.klaaswhite.c2w.domain.game.WoolTimer(new net.klaaswhite.c2w.domain.game.WoolTimer.Scheduler() {
             public Object scheduleRepeating(Runnable task, long delay, long interval) { return null; }
@@ -74,7 +74,7 @@ class MarkerManagerTest {
     @DisplayName("getMarkerKey delegates to engine which delegates to mc.markers()")
     void getMarkerKey() {
         var manager = createManager();
-        assertEquals("c2w:map_marker", manager.getMarkerKey());
+        assertEquals("map_marker", manager.getMarkerKey());
     }
 
     // ---------------------------------------------------------------
@@ -221,7 +221,7 @@ class MarkerManagerTest {
 
         when(markers.spawnMarker("c2w_game", new BlockPos(5, 70, 5))).thenReturn(null);
 
-        manager.createMarker(caller, "looking", "cap-blue");
+        manager.createMarker(caller, "looking", "spawnpoint");
         verify(markers).spawnMarker("c2w_game", new BlockPos(5, 70, 5));
     }
 
@@ -348,10 +348,6 @@ class MarkerManagerTest {
     void markerNamesContainsExpected() {
         assertNotNull(MarkerManager.MARKER_NAMES);
         assertTrue(MarkerManager.MARKER_NAMES.contains("wool"));
-        assertTrue(MarkerManager.MARKER_NAMES.contains("cap-red"));
-        assertTrue(MarkerManager.MARKER_NAMES.contains("cap-green"));
-        assertTrue(MarkerManager.MARKER_NAMES.contains("cap-blue"));
-        assertTrue(MarkerManager.MARKER_NAMES.contains("cap-yellow"));
-        assertEquals(9, MarkerManager.MARKER_NAMES.size());
+        assertEquals(5, MarkerManager.MARKER_NAMES.size());
     }
 }

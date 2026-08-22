@@ -13,6 +13,7 @@ import net.klaaswhite.c2w.domain.managers.StructureManager;
 import net.klaaswhite.c2w.domain.model.BlockPos;
 import net.klaaswhite.c2w.domain.model.LayoutCell;
 import net.klaaswhite.c2w.domain.model.ManagedMarker;
+import net.klaaswhite.c2w.domain.model.MapLayout;
 import net.klaaswhite.c2w.domain.model.Mirror;
 import net.klaaswhite.c2w.domain.model.StructureData;
 import net.klaaswhite.c2w.domain.model.StructureRotation;
@@ -56,6 +57,10 @@ public class GameManager implements AutoCloseable {
     private final GameStateMachine gsm;
 
     private @Nullable String selectedLayoutName;
+    private @Nullable MapLayout activeLayout;
+
+    // Team name -> spawnpoint BlockPos, captured from SPAWN structure markers at game start.
+    private final Map<String, BlockPos> teamSpawnPoints = new HashMap<>();
 
     public GameManager(
             JavaPlugin plugin,
@@ -135,6 +140,9 @@ public class GameManager implements AutoCloseable {
             return;
         }
 
+        // Show immediate title feedback before the heavy draft world creation
+        mc.players().sendTitle(player.getName(), "§6⚔ Draft Starting ⚔", "§ePreparing the draft world…", 10, 60, 20);
+
         var draft = worldManager.createDraftWorld();
         if (draft == null) {
             player.sendMessage("Failed to create draft world.");
@@ -143,10 +151,15 @@ public class GameManager implements AutoCloseable {
 
         eventManager.pushInternalEvent(new DraftCreatedEvent(draft.getName()));
 
+        // Reset the initiator to survival so they're not stuck in spectator
+        // from a previous game when arriving in the draft world.
+        mc.players().setGameMode(player.getName(), "SURVIVAL");
         player.teleport(draft.getSpawnLocation());
 
         gsm.transitionToDraftCreated();
-        player.sendMessage("Draft world created. Use /team to add players, then /c2w start [layout].");
+        player.sendMessage("Draft world created. Use /c2w team join <player> <team> to add players, then /c2w start [layout].");
+        // Confirm the draft is ready
+        mc.players().sendTitle(player.getName(), "§6⚔ Draft Ready ⚔", "§eUse /c2w team join to add players", 10, 60, 20);
     }
 
     public void start(CommandInput input) {
@@ -196,6 +209,7 @@ public class GameManager implements AutoCloseable {
             player.sendMessage("Layout '" + layoutName + "' not found or no layouts configured.");
             return;
         }
+        this.activeLayout = layout;
 
         // Refresh template registry before checking
         structureManager.discoverTemplates();
@@ -229,33 +243,49 @@ public class GameManager implements AutoCloseable {
             var logger = java.util.logging.Logger.getLogger("C2W");
 
             // placements-based layouts store structure center (as shown by
-            // the editor wireframe). Structure.place() treats the position as
-            // the NBT origin corner and the structure extends from that corner
-            // in a direction that depends on rotation:
+            // the editor wireframe). Structure.place() rotates the NBT around
+            // the origin corner, so the structure extends from that corner in a
+            // rotation-dependent direction (verified against Minecraft's
+            // transformedBlockPos):
             //   NONE (yaw≈0):   extends +X, +Z → corner = center − (w/2, d/2)
-            //   CW_90  (yaw≈90):  extends +X, −Z → corner = center − (w/2, −d/2)
+            //   CW_90  (yaw≈90):  extends −X, +Z → corner = center + (w/2, −d/2)
             //   CW_180 (yaw≈180): extends −X, −Z → corner = center + (w/2, d/2)
-            //   CCW_90 (yaw≈270): extends −X, +Z → corner = center + (w/2, −d/2)
+            //   CCW_90 (yaw≈270): extends +X, −Z → corner = center − (w/2, −d/2)
+            // The +X/+Z offsets use hw = w/2 so the unrotated footprint is
+            // [center−hw, center−hw+w−1]. The −X/−Z directions extend the other
+            // way, so their corner must be the mirror of that: (w−1)−hw. This
+            // equals hw when w is odd but is hw−1 when w is even — without this
+            // the rotated structures land one block off-centre (e.g. 180° cells
+            // shifted 1 block sideways from their editor wireframe).
             // Grid layouts already compute worldPosition as the grid-snapped corner.
             if (layout.isPlacementsBased()) {
                 int[] dims = structureTypeConfig.getDimensions(cell.typeName());
                 if (dims != null) {
-                    int hw = dims[0] / 2;
-                    int hd = dims[2] / 2;
+                    int w = dims[0];
+                    int d = dims[2];
+                    int hw = w / 2;
+                    int hd = d / 2;
+                    int maxX = (w - 1) - hw;   // corner offset when extending −X
+                    int maxZ = (d - 1) - hd;   // corner offset when extending −Z
                     var rot = yawToRotation(cell.yaw());
                     int dx = switch (rot) {
-                        case NONE, CLOCKWISE_90           -> -hw;
-                        case CLOCKWISE_180, COUNTERCLOCKWISE_90 ->  hw;
+                        case NONE, COUNTERCLOCKWISE_90    -> -hw;
+                        case CLOCKWISE_90, CLOCKWISE_180  -> maxX;
                     };
                     int dz = switch (rot) {
-                        case NONE, COUNTERCLOCKWISE_90    -> -hd;
-                        case CLOCKWISE_90, CLOCKWISE_180  ->  hd;
+                        case NONE, CLOCKWISE_90           -> -hd;
+                        case CLOCKWISE_180, COUNTERCLOCKWISE_90 -> maxZ;
                     };
                     pos = new BlockPos(pos.x() + dx, pos.y(), pos.z() + dz);
                 }
             }
 
             placeCellStructure(cell, game.getName(), pos);
+        }
+
+        // Show immediate title feedback to all players before the game starts
+        for (String name : mc.server().getOnlinePlayerNames()) {
+            mc.players().sendTitle(name, "§c⚔ Game Starting ⚔", "§ePlacing structures and preparing the arena…", 10, 60, 20);
         }
 
         if (autoSelected) {
@@ -274,11 +304,60 @@ public class GameManager implements AutoCloseable {
 
         String draftName = worldManager.getDraftWorld().getName();
         var gameWorld = worldManager.getGameWorld();
+        var teleportLogger = java.util.logging.Logger.getLogger("C2W");
         for (String playerName : mc.server().getOnlinePlayerNames()) {
             String playerWorld = mc.players().getWorldName(playerName);
+            teleportLogger.info("[GameManager.start] processing " + playerName
+                    + " world=" + playerWorld + " draft=" + draftName);
             if (playerWorld != null && playerWorld.equals(draftName)) {
-                mc.players().teleportToWorld(playerName, gameWorld.getSpawnPos(), game.getName());
+                BlockPos target = gameWorld.getSpawnPos();
+                String gameMode = "SPECTATOR";
+                teleportLogger.info("[GameManager.start] " + playerName + " is in draft world, fallback target=" + target);
+                var mp = playerManager.getPlayer(playerName);
+                if (mp != null) {
+                    teleportLogger.info("[GameManager.start] " + playerName + " has ManagedPlayer, team="
+                            + (mp.getTeam() != null ? mp.getTeam().teamName : "null"));
+                    var team = mp.getTeam();
+                    if (team != null) {
+                        if ("Spectator".equalsIgnoreCase(team.teamName)) {
+                            // Spectators: teleport to fallback, stay in spectator mode
+                            teleportLogger.info("[GameManager.start] " + playerName + " is a spectator");
+                        } else {
+                            // Red/Blue team members: set survival and teleport to team spawn
+                            gameMode = "SURVIVAL";
+                            var teamSpawn = teamSpawnPoints.get(team.teamName);
+                            teleportLogger.info("[GameManager.start] " + playerName + " team=" + team.teamName
+                                    + " teamSpawnPoints containsKey=" + teamSpawnPoints.containsKey(team.teamName)
+                                    + " teamSpawn=" + teamSpawn);
+                            if (teamSpawn != null) {
+                                // Spawn on the marker block itself (the marker sits at the player's feet)
+                                target = new BlockPos(teamSpawn.x(), teamSpawn.y(), teamSpawn.z());
+                                teleportLogger.info("[GameManager.start] " + playerName + " using team spawn target=" + target);
+                            }
+                        }
+                    } else {
+                        // No team: put them on spectator team, stay in spectator mode
+                        teleportLogger.info("[GameManager.start] " + playerName + " has no team, assigning spectator");
+                        var specTeam = net.klaaswhite.c2w.domain.model.ManagedTeam.teams.get("Spectator");
+                        if (specTeam != null) mp.setTeam(specTeam);
+                    }
+                } else {
+                    teleportLogger.warning("[GameManager.start] " + playerName + " has NO ManagedPlayer in registry!");
+                }
+                mc.players().setGameMode(playerName, gameMode);
+                mc.players().teleportToWorld(playerName, target, game.getName());
+                // Set the player's respawn point so they respawn in the game world
+                // (at their team's spawn) rather than the main overworld on death.
+                mc.players().setRespawnLocation(playerName, target, game.getName(), true);
+            } else {
+                teleportLogger.info("[GameManager.start] " + playerName + " NOT in draft world (world="
+                        + playerWorld + "), skipping teleport");
             }
+        }
+
+        // Confirm the game has fully started
+        for (String name : mc.server().getOnlinePlayerNames()) {
+            mc.players().sendTitle(name, "§a⚔ Game Started! ⚔", "§eCapture 2 wools to win!", 10, 80, 30);
         }
     }
 
@@ -327,14 +406,20 @@ public class GameManager implements AutoCloseable {
 
         int[] filterDims = structureTypeConfig.getDimensions(typeName);
         if (filterDims != null) {
-            // ponytail: rotated structures extend in different directions — compute rotated AABB
+            // ponytail: rotated structures extend in different directions — compute rotated AABB.
+            // Ranges are half-open [min, max) and must match where start() actually
+            // placed the structure around `pos` (its origin corner):
+            //   NONE  → +X by w, +Z by d
+            //   CW_90 → −X by d, +Z by w   (the −X run is [pos-(d-1) … pos])
+            //   CW_180→ −X by w, −Z by d
+            //   CCW_90→ +X by d, −Z by w
             int w = filterDims[0], h = filterDims[1], d = filterDims[2];
             int xMin, xMax, zMin, zMax;
             switch (rotation) {
-                case CLOCKWISE_90 ->          { xMin = pos.x();       xMax = pos.x() + w;  zMin = pos.z() - d;  zMax = pos.z(); }
-                case CLOCKWISE_180 ->         { xMin = pos.x() - w;   xMax = pos.x();      zMin = pos.z() - d;  zMax = pos.z(); }
-                case COUNTERCLOCKWISE_90 ->   { xMin = pos.x() - w;   xMax = pos.x();      zMin = pos.z();      zMax = pos.z() + d; }
-                default ->                    { xMin = pos.x();       xMax = pos.x() + w;  zMin = pos.z();      zMax = pos.z() + d; }
+                case CLOCKWISE_90 ->          { xMin = pos.x() - d + 1; xMax = pos.x() + 1;     zMin = pos.z();      zMax = pos.z() + w; }
+                case CLOCKWISE_180 ->         { xMin = pos.x() - w + 1; xMax = pos.x() + 1;     zMin = pos.z() - d + 1; zMax = pos.z() + 1; }
+                case COUNTERCLOCKWISE_90 ->   { xMin = pos.x();         xMax = pos.x() + d;     zMin = pos.z() - w + 1; zMax = pos.z() + 1; }
+                default ->                    { xMin = pos.x();         xMax = pos.x() + w;     zMin = pos.z();      zMax = pos.z() + d; }
             }
             final int fxMin = xMin, fxMax = xMax, fzMin = zMin, fzMax = zMax;
             spotMarkers.removeIf(m -> {
@@ -540,12 +625,24 @@ public class GameManager implements AutoCloseable {
     }
 
     private void placeSpawnMarkers(StructureData placed, String worldName, BlockPos pos, String team) {
-        int radius = 64;
-        int minX = pos.x() - radius, maxX = pos.x() + radius;
-        int minY = pos.y() - radius, maxY = pos.y() + radius;
-        int minZ = pos.z() - radius, maxZ = pos.z() + radius;
+        // Use the structure dimensions to constrain the search to just this structure,
+        // centered on the placement corner + a small margin. This prevents cross-team
+        // marker interference when spawn structures are close together.
+        int w = placed.getWidth();
+        int h = placed.getHeight();
+        int d = placed.getDepth();
+        int margin = Math.max(Math.max(w, h), d);
+        int minX = pos.x() - margin, maxX = pos.x() + margin;
+        int minY = pos.y() - margin, maxY = pos.y() + margin;
+        int minZ = pos.z() - margin, maxZ = pos.z() + margin;
+        var logger = java.util.logging.Logger.getLogger("C2W");
+        logger.info("[placeSpawnMarkers] team=" + team + " pos=" + pos + " dims=" + w + "x" + h + "x" + d
+                + " margin=" + margin + " boundingBox=[("
+                + minX + "," + minY + "," + minZ + ")-("
+                + maxX + "," + maxY + "," + maxZ + ")]");
 
         var worldMarkers = mc.markers().getMarkersInWorld(worldName);
+        logger.info("[placeSpawnMarkers] found " + worldMarkers.size() + " markers in world " + worldName);
         for (var markerEntity : worldMarkers) {
             var markerPos = markerEntity.getPosition();
             if (markerPos.x() < minX || markerPos.x() > maxX) continue;
@@ -558,8 +655,22 @@ public class GameManager implements AutoCloseable {
             if ("spawnpoint".equalsIgnoreCase(name)) {
                 mc.server().broadcastMessage("Marked spawnpoint for team " + team + " at ("
                         + markerPos.x() + ", " + markerPos.y() + ", " + markerPos.z() + ")");
+                // Capture the first spawnpoint marker per team for player routing at start.
+                teamSpawnPoints.putIfAbsent(team, markerPos);
+                logger.info("[placeSpawnMarkers] captured " + team + " -> " + markerPos
+                        + " (teamSpawnPoints now has " + teamSpawnPoints.size() + " entries)");
+            } else {
+                logger.info("[placeSpawnMarkers] marker at " + markerPos + " has name=" + name + " (not 'spawnpoint'), ignoring");
             }
         }
+    }
+
+    /**
+     * Return the captured spawnpoint position for a team (e.g. "Red", "Blue",
+     * "Spectator"), or null if none was found in the layout's SPAWN structures.
+     */
+    public @Nullable BlockPos getSpawnPointForTeam(String teamName) {
+        return teamSpawnPoints.get(teamName);
     }
 
     public void end(CommandInput input) {
@@ -583,15 +694,34 @@ public class GameManager implements AutoCloseable {
 
     public void woolCapped(WoolCapturedEvent event) {
         gsm.onWoolCaptured(event);
+        if (gsm.isGameEnded()) {
+            var winningTeam = event.getPlayer().getTeam();
+            end();
+            if (winningTeam != null) {
+                mc.server().broadcastMessage("§6§l" + winningTeam.teamName
+                        + " team wins the game! §eThey captured 2 wools! 🏆");
+            }
+        }
     }
 
     public int getWoolCount(String teamName) {
         return gsm.getWoolCount(teamName);
     }
+
+    /**
+     * The layout resolved for the most recent {@link #start}. Null before a game
+     * starts. Consumed by {@code ScoreboardManager} to render the layout mock.
+     */
+    public @Nullable MapLayout getActiveLayout() {
+        return activeLayout;
+    }
+
     public void reset() {
         eventManager.unregisterInternalEvent(WoolCapturedEvent.class, this::woolCapped);
         gsm.reset();
         this.selectedLayoutName = null;
+        this.activeLayout = null;
+        this.teamSpawnPoints.clear();
         structureManager.clearUsedInstances();
         eventManager.pushInternalEvent(new net.klaaswhite.c2w.domain.events.ResetEvent());
     }

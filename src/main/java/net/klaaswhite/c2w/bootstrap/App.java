@@ -15,6 +15,7 @@ import net.klaaswhite.c2w.adapter.managers.BoundaryManager;
 import net.klaaswhite.c2w.adapter.managers.CommandManager;
 import net.klaaswhite.c2w.adapter.managers.EntityManager;
 import net.klaaswhite.c2w.adapter.managers.EventManager;
+import net.klaaswhite.c2w.adapter.managers.EnvironmentManager;
 import net.klaaswhite.c2w.bootstrap.config.FolderStructureTypeConfig;
 import net.klaaswhite.c2w.adapter.managers.GameManager;
 import net.klaaswhite.c2w.adapter.managers.LayoutEditorManager;
@@ -22,7 +23,9 @@ import net.klaaswhite.c2w.domain.managers.LayoutManager;
 import net.klaaswhite.c2w.adapter.managers.MarkerManager;
 import net.klaaswhite.c2w.adapter.managers.PlayerManager;
 import net.klaaswhite.c2w.adapter.managers.ResourceManager;
+import net.klaaswhite.c2w.adapter.managers.ScoreboardManager;
 import net.klaaswhite.c2w.adapter.managers.StructureCreationManager;
+import net.klaaswhite.c2w.adapter.managers.TeamSelectionManager;
 import net.klaaswhite.c2w.domain.managers.StructureManager;
 import net.klaaswhite.c2w.adapter.managers.WorldManager;
 import net.klaaswhite.c2w.adapter.minecraft.MinecraftManager;
@@ -30,8 +33,10 @@ import net.klaaswhite.c2w.bootstrap.listeners.ChangeTeamPacketListener;
 import net.klaaswhite.c2w.bootstrap.minecraft.BukkitMinecraftManager;
 import net.klaaswhite.c2w.bootstrap.minecraft.BukkitWoolTimerScheduler;
 import net.klaaswhite.c2w.bootstrap.ops.BukkitFileSystemOps;
+import org.bukkit.GameMode;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.potion.PotionEffectType;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -65,8 +70,25 @@ public class App implements AutoCloseable {
 
         this.managers.worldManager = new WorldManager(plugin, mc);
 
+        // Heartbeat that pins world time/weather and grants every player night vision.
+        this.managers.environmentManager = new EnvironmentManager(
+                this.managers.worldManager, mc, new BukkitWoolTimerScheduler(plugin),
+                PotionEffectType.NIGHT_VISION);
+
         this.managers.entityManager = new EntityManager(this.managers.eventManager);
         this.managers.playerManager = new PlayerManager(this.managers, mc);
+
+        // Team selection: walking onto a draft-world platform assigns the player's team.
+        this.managers.teamSelectionManager = new TeamSelectionManager(
+                this.managers.eventManager,
+                this.managers.worldManager,
+                this.managers.playerManager,
+                mc);
+
+        // WoolTimer uses Scheduler interface instead of ServerOps — must be
+        // created before MarkerManager (which passes it to MarkerEngine → Wool).
+        WoolTimer woolTimer = new WoolTimer(new BukkitWoolTimerScheduler(plugin));
+        this.managers.woolTimer = woolTimer;
 
         this.managers.markerManager = new MarkerManager(this.managers, this.managers.eventManager, mc);
 
@@ -87,10 +109,6 @@ public class App implements AutoCloseable {
         this.managers.layoutEditorManager = new LayoutEditorManager(
                 plugin, this.managers.eventManager, this.managers.worldManager,
                 this.managers.structureManager, structureTypeConfig, mc, dataFolder);
-
-        // WoolTimer uses Scheduler interface instead of ServerOps
-        WoolTimer woolTimer = new WoolTimer(new BukkitWoolTimerScheduler(plugin));
-        this.managers.woolTimer = woolTimer;
 
         this.managers.boundaryManager = new BoundaryManager(
                 this.managers.eventManager,
@@ -116,20 +134,32 @@ public class App implements AutoCloseable {
                 structureTypeConfig
         );
 
+        this.managers.scoreboardManager = new ScoreboardManager(
+                this.managers.eventManager,
+                mc,
+                this.managers.gameManager,
+                this.managers.markerManager,
+                layoutManager,
+                structureTypeConfig
+        );
+
         this.managers.eventManager.registerPacketListener(
                 new ChangeTeamPacketListener(plugin, this.managers.playerManager)
         );
 
         closeables.add(this.managers.eventManager);
         closeables.add(this.managers.boundaryManager);
+        closeables.add(this.managers.teamSelectionManager);
         closeables.add(this.managers.playerManager);
         closeables.add(this.managers.worldManager);
+        closeables.add(this.managers.environmentManager);
         closeables.add(this.managers.markerManager);
         closeables.add(this.managers.structureManager);
         closeables.add(this.managers.layoutEditorManager);
         closeables.add(this.managers.structureCreationManager);
         closeables.add(this.managers.resourceManager);
         closeables.add(this.managers.gameManager);
+        closeables.add(this.managers.scoreboardManager);
         closeables.add(this.managers.entityManager);
         closeables.add(this.managers.woolTimer);
     }
@@ -139,7 +169,7 @@ public class App implements AutoCloseable {
                 plugin,
                 new C2WCommand(plugin, this.managers.gameManager, this.managers.markerManager,
                         this.managers.layoutManager, this.managers.playerManager, v -> this.rebuild(),
-                        this.managers.woolTimer),
+                        this.managers.woolTimer, this.managers.mc),
                 new MarkerCommand(plugin, this.managers.markerManager),
                 new WorldCommand(plugin, this.managers.worldManager),
                 new StructureCommand(plugin, this.managers.gameManager, this.managers.structureCreationManager,
@@ -156,6 +186,9 @@ public class App implements AutoCloseable {
         var lobby = this.managers.worldManager != null ? this.managers.worldManager.getLobbyWorld().getWorld() : null;
         if (lobby != null) {
             for (Player p : plugin.getServer().getOnlinePlayers()) {
+                // Reset players to survival when returning them to the lobby so
+                // ex-spectators don't stay in spectator mode in the lobby world.
+                p.setGameMode(GameMode.SURVIVAL);
                 p.teleport(lobby.getSpawnLocation());
             }
         }
@@ -172,11 +205,14 @@ public class App implements AutoCloseable {
         this.managers.boundaryManager = null;
         this.managers.markerManager = null;
         this.managers.playerManager = null;
+        this.managers.teamSelectionManager = null;
         this.managers.structureManager = null;
         this.managers.structureCreationManager = null;
         this.managers.resourceManager = null;
         this.managers.worldManager = null;
+        this.managers.environmentManager = null;
         this.managers.gameManager = null;
+        this.managers.scoreboardManager = null;
         this.managers.entityManager = null;
         this.managers.woolTimer = null;
         this.managers.layoutEditorManager = null;

@@ -150,6 +150,28 @@ public interface MinecraftManager extends net.klaaswhite.c2w.domain.ops.Minecraf
 
         /** Get the world container directory. */
         File getWorldContainer();
+
+        /**
+         * Set the absolute daytime of the world (ticks since dawn:
+         * 0 = sunrise, 6000 = noon, 18000 = midnight).
+         * <p>
+         * Worlds whose dimension type has no world clock (e.g. the nether, the
+         * end, or custom flat/void worlds on MC 26.1+) cannot track a time of
+         * day; setting the time is then a silent no-op.
+         */
+        void setTime(String worldName, long time);
+
+        /** Toggle the daylight cycle game rule (whether time advances by itself). */
+        void setDoDaylightCycle(String worldName, boolean enabled);
+
+        /** Set whether it is currently raining (storming) in the world. */
+        void setStorm(String worldName, boolean storm);
+
+        /** Set whether it is currently thundering in the world. */
+        void setThundering(String worldName, boolean thundering);
+
+        /** Toggle the weather cycle game rule (whether weather changes by itself). */
+        void setDoWeatherCycle(String worldName, boolean enabled);
     }
 
     /**

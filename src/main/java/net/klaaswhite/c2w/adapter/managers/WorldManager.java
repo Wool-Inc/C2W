@@ -20,11 +20,12 @@ public class WorldManager implements AutoCloseable {
     private final ManagedWorld gameWorld;
 
     // ponytail: prefixes matching transient C2W worlds left over from a crash/restart.
-    // NOTE: c2w_create_* worlds are owned by StructureCreationManager and restored via
-    // restoreSessions() (run after this manager in App.initManagers), so they must NOT be
-    // deleted here or session restore would find nothing.
+    // NOTE: c2w_create_* creation worlds are cleaned up here on startup rather than
+    // restored — stale worlds from a crash are deleted to avoid loading stale data.
+    // (StructureCreationManager.restoreSessions() is retained as a fallback for
+    // worlds in per-world dimension dirs that cleanupLeftoverTransientWorlds misses.)
     private static final String[] TRANSIENT_PREFIXES = {
-        "c2w_draft", "c2w_game", "c2w_resource_", "c2w_layout_"
+        "c2w_draft", "c2w_game", "c2w_resource_", "c2w_layout_", "c2w_create_"
     };
 
     public WorldManager(JavaPlugin plugin, MinecraftManager mc) {
@@ -33,12 +34,16 @@ public class WorldManager implements AutoCloseable {
         var worlds = mc.worlds();
 
         // Persistent worlds: created on first load, never deleted by the plugin.
-        this.lobbyWorld = new ManagedWorld("c2w_lobby", false, worlds);
-        this.referenceWorld = new ManagedWorld("c2w_reference", false, worlds);
+        // The lobby gets a flat 9x9 bedrock platform so more players fit waiting there.
+        this.lobbyWorld = new ManagedWorld("c2w_lobby", false, worlds, false, true, 4);
+        this.referenceWorld = new ManagedWorld("c2w_reference", false, worlds, true, false, 0);
 
         // Transient worlds: created on demand, deleted by destroyDraftAndGameWorlds.
-        this.draftWorld = new ManagedWorld("c2w_draft", true, worlds);
-        this.gameWorld = new ManagedWorld("c2w_game", true, worlds);
+        // The draft world places no center cross — its spawn layout (including the
+        // team selection platforms and walkways) is built entirely in createTeamSelectionAreas.
+        this.draftWorld = new ManagedWorld("c2w_draft", true, worlds, false, false, 0);
+        // Game world: no center cross — spawn points come from layout SPAWN structures.
+        this.gameWorld = new ManagedWorld("c2w_game", true, worlds, false, false, 0);
 
         // Nuke leftover transient worlds from a previous crash/restart.
         cleanupLeftoverTransientWorlds();
@@ -71,44 +76,84 @@ public class WorldManager implements AutoCloseable {
         return w;
     }
 
+    // --------------------------------------------------------------------
+    // Draft world — team selection area
+    // --------------------------------------------------------------------
+    // Base level: the bedrock support blocks sit at y = PLATFORM_BASE_Y and the
+    // coloured standing surface on top at PLATFORM_SURFACE_Y, so a player's feet
+    // end up at PLATFORM_SURFACE_Y + 1 (= 65). The spectator platform is raised
+    // (feet at SPECTATOR_SURFACE_Y + 1 = 71) and is reached via a staircase.
+    private static final int PLATFORM_BASE_Y = 63;
+    private static final int PLATFORM_SURFACE_Y = 64;
+    private static final int SPECTATOR_BASE_Y = 69;
+    private static final int SPECTATOR_SURFACE_Y = 70;
+
     /**
-     * Place bedrock team selection areas in the draft world.
-     * - Red team area: (-10, 64, 0)
-     * - Blue team area: (10, 64, 0)
-     * - Spectator area: (0, 70, 10)
-     * - Spawn platform: (0, 64, 0)
+     * Place bedrock team selection areas in the draft world. Everything is
+     * connected so every platform is reachable by walking:
+     * - Spawn platform: 3x3 at the origin (0, 64, 0)
+     * - Red team platform: (-10, 64, 0) — 3x3 RED_WOOL via a red walkway from spawn
+     * - Blue team platform: (10, 64, 0) — 3x3 BLUE_WOOL via a blue walkway from spawn
+     * - Spectator platform: (0, 70, 10) — raised glass platform reachable by stairs
      */
     private void createTeamSelectionAreas(World world) {
         if (mc == null) return;
+        String worldName = world.getName();
 
-        // Red team platform (-10, 64, 0) - 3x3 bedrock platform
-        for (int x = -11; x <= -9; x++) {
-            for (int z = -1; z <= 1; z++) {
-                mc.blocks().setBlock(world.getName(), new BlockPos(x, 63, z), Material.BEDROCK);
-                mc.blocks().setBlock(world.getName(), new BlockPos(x, 64, z), Material.RED_WOOL);
-            }
+        // Spawn platform (3x3) at the origin.
+        fillPlatform(worldName, Material.BEDROCK, Material.SMOOTH_STONE,
+                -1, 1, -1, 1, PLATFORM_BASE_Y);
+
+        // Red side: walkway then platform.
+        fillPlatform(worldName, Material.BEDROCK, Material.RED_CONCRETE, -8, -2, -1, 1, PLATFORM_BASE_Y);
+        fillPlatform(worldName, Material.BEDROCK, Material.RED_WOOL, -11, -9, -1, 1, PLATFORM_BASE_Y);
+
+        // Blue side: walkway then platform.
+        fillPlatform(worldName, Material.BEDROCK, Material.BLUE_CONCRETE, 2, 8, -1, 1, PLATFORM_BASE_Y);
+        fillPlatform(worldName, Material.BEDROCK, Material.BLUE_WOOL, 9, 11, -1, 1, PLATFORM_BASE_Y);
+
+        // Spectator platform: elevated glass pad at the north end.
+        fillPlatform(worldName, Material.BEDROCK, Material.GLASS, -1, 1, 9, 11, SPECTATOR_BASE_Y);
+
+        // 3-wide staircase from spawn level up to the spectator level (one block up per z-slice).
+        for (int z = 2; z <= 8; z++) {
+            int surfaceY = PLATFORM_SURFACE_Y + (z - 2); // 64..70, feet 65..71
+            Material m = (z == 2) ? Material.SMOOTH_STONE : Material.STONE_BRICKS;
+            fillRect(worldName, m, surfaceY, -1, 1, z, z);
         }
+    }
 
-        // Blue team platform (10, 64, 0) - 3x3 bedrock platform
-        for (int x = 9; x <= 11; x++) {
-            for (int z = -1; z <= 1; z++) {
-                mc.blocks().setBlock(world.getName(), new BlockPos(x, 63, z), Material.BEDROCK);
-                mc.blocks().setBlock(world.getName(), new BlockPos(x, 64, z), Material.BLUE_WOOL);
-            }
+    /**
+     * Resolve which team's selection platform a player is standing on in the
+     * draft world, or {@code null} when the position is not on a team platform.
+     *
+     * @param x     the player's feet block x
+     * @param feetY the player's feet block y (the surface height the player stands on)
+     * @param z     the player's feet block z
+     */
+    public static @org.jspecify.annotations.Nullable String resolveTeamSelectionAt(int x, int feetY, int z) {
+        if (feetY == PLATFORM_SURFACE_Y + 1) {
+            if (x >= -11 && x <= -9 && z >= -1 && z <= 1) return "Red";
+            if (x >= 9 && x <= 11 && z >= -1 && z <= 1) return "Blue";
         }
-
-        // Spectator platform (0, 70, 10) - 3x3 bedrock platform
-        for (int x = -1; x <= 1; x++) {
-            for (int z = 9; z <= 11; z++) {
-                mc.blocks().setBlock(world.getName(), new BlockPos(x, 69, z), Material.BEDROCK);
-                mc.blocks().setBlock(world.getName(), new BlockPos(x, 70, z), Material.GLASS);
-            }
+        if (feetY == SPECTATOR_SURFACE_Y + 1) {
+            if (x >= -1 && x <= 1 && z >= 9 && z <= 11) return "Spectator";
         }
+        return null;
+    }
 
-        // Spawn platform (0, 64, 0) - 3x3 bedrock platform
-        for (int x = -1; x <= 1; x++) {
-            for (int z = -1; z <= 1; z++) {
-                mc.blocks().setBlock(world.getName(), new BlockPos(x, 63, z), Material.BEDROCK);
+    /** Fill a rectangular base+surface platform (surface one block above the base). */
+    private void fillPlatform(String worldName, Material base, Material surface,
+            int minX, int maxX, int minZ, int maxZ, int baseY) {
+        fillRect(worldName, base, baseY, minX, maxX, minZ, maxZ);
+        fillRect(worldName, surface, baseY + 1, minX, maxX, minZ, maxZ);
+    }
+
+    private void fillRect(String worldName, Material material, int y,
+            int minX, int maxX, int minZ, int maxZ) {
+        for (int x = minX; x <= maxX; x++) {
+            for (int z = minZ; z <= maxZ; z++) {
+                mc.blocks().setBlock(worldName, new BlockPos(x, y, z), material);
             }
         }
     }

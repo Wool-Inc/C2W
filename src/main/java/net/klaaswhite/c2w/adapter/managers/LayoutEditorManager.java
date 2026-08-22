@@ -164,22 +164,19 @@ public class LayoutEditorManager implements AutoCloseable {
         for (var existing : session.placements) {
             if (aabbsOverlap(pos.x(), pos.y(), pos.z(), typeName,
                     existing.x(), existing.y(), existing.z(), existing.typeName())) {
-                player.sendMessage("Cannot place here: would overlap existing " + existing.typeName()
-                        + "/" + existing.id() + ".");
+                player.sendMessage("Cannot place here: would overlap existing " + existing.typeName() + ".");
                 return;
             }
         }
 
         float yaw = Math.round(player.getLocation().getYaw() / 90.0f) * 90.0f;
-        int index = (int) session.placements.stream()
-                .filter(p -> p.typeName().equals(typeName)).count();
-        session.placements.add(new LayoutPlacement(typeName, String.valueOf(index),
+        session.placements.add(new LayoutPlacement(typeName,
                 pos.x(), pos.y(), pos.z(), null, yaw));
 
         startPlacementParticles(worldName, session.placements.size() - 1, typeName,
                 pos.x(), pos.y(), pos.z(), yaw);
 
-        player.sendMessage("Placed " + typeName + "/" + index + " at ("
+        player.sendMessage("Placed " + typeName + " at ("
                 + pos.x() + ", " + pos.y() + ", " + pos.z() + ") facing " + (int) yaw + "\u00B0");
     }
 
@@ -230,13 +227,13 @@ public class LayoutEditorManager implements AutoCloseable {
             if (world != null) {
                 world.spawnParticle(Particle.EXPLOSION, removed.x() + 0.5, removed.y() + 1, removed.z() + 0.5, 1, 0, 0, 0);
             }
-            player.sendMessage("Removed " + removed.typeName() + "/" + removed.id() + ".");
+            player.sendMessage("Removed " + removed.typeName() + ".");
         } else {
             player.sendMessage("You are not inside any placed structure.");
         }
     }
 
-    public void setSpawnTeam(Player player, int index, String team) {
+    public void setSpawnTeam(Player player, String team) {
         String worldName = mc.players().getWorldName(player.getName());
         if (worldName == null) {
             player.sendMessage("Could not determine your world.");
@@ -248,14 +245,16 @@ public class LayoutEditorManager implements AutoCloseable {
             return;
         }
 
-        if (index < 0 || index >= session.placements.size()) {
-            player.sendMessage("Invalid placement index. Use /layout list to see indices (0-based).");
+        var pos = mc.players().getPosition(player.getName());
+        int index = findPlacementAt(session, pos.x(), pos.y(), pos.z());
+        if (index < 0) {
+            player.sendMessage("You are not inside any placed structure.");
             return;
         }
 
         var p = session.placements.get(index);
-        session.placements.set(index, new LayoutPlacement(p.typeName(), p.id(), p.x(), p.y(), p.z(), team, p.yaw()));
-        player.sendMessage("Marked placement " + index + " (" + p.typeName() + "/" + p.id() + ") as " + team + " spawn.");
+        session.placements.set(index, new LayoutPlacement(p.typeName(), p.x(), p.y(), p.z(), team, p.yaw()));
+        player.sendMessage("Marked placement " + index + " (" + p.typeName() + ") as " + team + " spawn.");
     }
 
     public void rotateStructure(Player player, float degrees) {
@@ -279,12 +278,12 @@ public class LayoutEditorManager implements AutoCloseable {
 
         var p = session.placements.get(index);
         float newYaw = (p.yaw() + degrees) % 360;
-        session.placements.set(index, new LayoutPlacement(p.typeName(), p.id(), p.x(), p.y(), p.z(), p.spawnTeam(), newYaw));
+        session.placements.set(index, new LayoutPlacement(p.typeName(), p.x(), p.y(), p.z(), p.spawnTeam(), newYaw));
 
         stopPlacementParticles(worldName, index);
         startPlacementParticles(worldName, index, p.typeName(), p.x(), p.y(), p.z(), newYaw);
 
-        player.sendMessage("Rotated " + p.typeName() + "/" + p.id() + " to " + (int)newYaw + "°.");
+        player.sendMessage("Rotated " + p.typeName() + " to " + (int)newYaw + "°.");
     }
 
     public void moveStructure(Player player, int dx, int dy, int dz) {
@@ -317,17 +316,17 @@ public class LayoutEditorManager implements AutoCloseable {
             var other = session.placements.get(i);
             if (aabbsOverlap(newX, newY, newZ, p.typeName(),
                     other.x(), other.y(), other.z(), other.typeName())) {
-                player.sendMessage("Cannot move here: would overlap " + other.typeName() + "/" + other.id() + ".");
+                player.sendMessage("Cannot move here: would overlap " + other.typeName() + ".");
                 return;
             }
         }
 
-        session.placements.set(index, new LayoutPlacement(p.typeName(), p.id(), newX, newY, newZ, p.spawnTeam(), p.yaw()));
+        session.placements.set(index, new LayoutPlacement(p.typeName(), newX, newY, newZ, p.spawnTeam(), p.yaw()));
 
         stopPlacementParticles(worldName, index);
         startPlacementParticles(worldName, index, p.typeName(), newX, newY, newZ, p.yaw());
 
-        player.sendMessage("Moved " + p.typeName() + "/" + p.id() + " to ("
+        player.sendMessage("Moved " + p.typeName() + " to ("
                 + newX + ", " + newY + ", " + newZ + ").");
     }
 
@@ -365,7 +364,7 @@ public class LayoutEditorManager implements AutoCloseable {
             data.setOrigin(world.getSpawnLocation().getBlockX(), world.getSpawnLocation().getBlockY(), world.getSpawnLocation().getBlockZ());
         }
         for (var p : session.placements) {
-            data.addPlacement(p.typeName(), p.id(), p.x(), p.y(), p.z(), p.yaw());
+            data.addPlacement(p.typeName(), p.x(), p.y(), p.z(), p.yaw());
             if (p.spawnTeam() != null) {
                 data.markSpawnTeam(data.getPlacements().size() - 1, p.spawnTeam());
             }

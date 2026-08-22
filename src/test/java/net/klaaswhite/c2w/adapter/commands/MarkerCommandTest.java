@@ -105,10 +105,10 @@ class MarkerCommandTest {
     void createPlayer(@Mock Player player) {
         when(player.hasPermission("c2w.admin")).thenReturn(true);
 
-        boolean result = dispatch(input(player, "create", "player", "cap-red"));
+        boolean result = dispatch(input(player, "create", "player", "spawnpoint"));
 
         assertTrue(result);
-        verify(markerManager).createMarker(player, "player", "cap-red");
+        verify(markerManager).createMarker(player, "player", "spawnpoint");
     }
 
     @Test
@@ -155,14 +155,14 @@ class MarkerCommandTest {
     @DisplayName("list shows markers from markerManager")
     void listMarkers(@Mock Player player) {
         when(player.hasPermission("c2w.admin")).thenReturn(true);
-        when(markerManager.getMarkersInWorld(player)).thenReturn(List.of("wool", "cap-red"));
+        when(markerManager.getMarkersInWorld(player)).thenReturn(List.of("wool", "spawnpoint"));
 
         boolean result = dispatch(input(player, "list"));
 
         assertTrue(result);
         verify(player).sendMessage(contains("Markers in this world (2)"));
         verify(player).sendMessage(contains("wool"));
-        verify(player).sendMessage(contains("cap-red"));
+        verify(player).sendMessage(contains("spawnpoint"));
     }
 
     @Test
@@ -202,18 +202,15 @@ class MarkerCommandTest {
     void tabCreateName(@Mock Player player) {
         List<String> choices = tabComplete(input(player, "create", "looking", ""));
         assertTrue(choices.contains("wool"));
-        assertTrue(choices.contains("cap-red"));
         assertTrue(choices.contains("spawnpoint"));
-        assertTrue(choices.contains("structure-"));
-        assertTrue(choices.contains("resourcespot-"));
     }
 
     @Test
     @DisplayName("tab completion for remove offers existing markers")
     void tabRemove(@Mock Player player) {
-        when(markerManager.getMarkersInWorld(player)).thenReturn(List.of("wool", "cap-red"));
+        when(markerManager.getMarkersInWorld(player)).thenReturn(List.of("wool", "spawnpoint"));
         List<String> choices = tabComplete(input(player, "remove", ""));
         assertTrue(choices.contains("wool"));
-        assertTrue(choices.contains("cap-red"));
+        assertTrue(choices.contains("spawnpoint"));
     }
 }

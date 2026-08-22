@@ -18,6 +18,8 @@ import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
 import org.bukkit.potion.PotionEffectType;
+import org.bukkit.scoreboard.Objective;
+import org.bukkit.scoreboard.Score;
 import org.bukkit.scoreboard.Scoreboard;
 import org.bukkit.scoreboard.Team;
 import org.jspecify.annotations.Nullable;
@@ -141,6 +143,9 @@ public class FakeMinecraftManager implements MinecraftManager {
             var p = players.get(playerName);
             if (p != null) { p.position = pos; p.worldName = worldName; }
         }
+        @Override public void setRespawnLocation(String playerName, BlockPos pos, String worldName, boolean force) {
+            // no-op in tests
+        }
         @Override public void sendMessage(String playerName, String message) {
             var p = players.get(playerName);
             if (p != null) p.messages.add(message);
@@ -148,6 +153,7 @@ public class FakeMinecraftManager implements MinecraftManager {
         @Override public void giveItemStack(String playerName, ItemStackRef item) {}
         @Override public void clearInventory(String playerName) {}
         @Override public void addPotionEffect(String playerName, PotionEffectType type, int duration, int amplifier) {}
+        @Override public boolean hasPotionEffect(String playerName, PotionEffectType type) { return false; }
         @Override public void removePotionEffects(String playerName) {}
         @Override public void setHealth(String playerName, double health) {}
         @Override public void setFoodLevel(String playerName, int food) {}
@@ -164,6 +170,7 @@ public class FakeMinecraftManager implements MinecraftManager {
             if (p != null) p.titles.add(title + " | " + subtitle);
         }
         @Override public void playSound(String playerName, String soundName, float volume, float pitch) {}
+        @Override public void setGameMode(String playerName, String gameMode) {}
         @Override public void spawnParticles(String playerName, String worldName, int x, int y, int z,
                                            String particleType, int count, int r, int g, int b) {}
     }
@@ -211,6 +218,11 @@ public class FakeMinecraftManager implements MinecraftManager {
             return dropItem(worldName, pos, item.materialName(), item.count());
         }
         @Override public boolean isWorldLoaded(String name) { return worlds.containsKey(name); }
+        @Override public void setTime(String worldName, long time) {}
+        @Override public void setDoDaylightCycle(String worldName, boolean enabled) {}
+        @Override public void setStorm(String worldName, boolean storm) {}
+        @Override public void setThundering(String worldName, boolean thundering) {}
+        @Override public void setDoWeatherCycle(String worldName, boolean enabled) {}
         @Override public BlockPos getSpawnPos(String worldName) {
             var fw = worlds.get(worldName);
             return fw != null ? fw.spawnLocation : new BlockPos(0, 65, 0);
@@ -322,6 +334,23 @@ public class FakeMinecraftManager implements MinecraftManager {
             Scoreboard sb = mock(Scoreboard.class);
             when(sb.getTeams()).thenReturn(new HashSet<>(createdTeams.values()));
             return sb;
+        }
+        @Override public Objective registerSidebarObjective(String name, String displayName) {
+            Objective obj = mock(Objective.class);
+            when(obj.getName()).thenReturn(name);
+            when(obj.getDisplayName()).thenReturn(displayName);
+            Scoreboard sb = getMainScoreboard();
+            when(obj.getScoreboard()).thenReturn(sb);
+            when(obj.getScore(anyString())).thenAnswer(inv -> {
+                Score s = mock(Score.class);
+                when(s.getEntry()).thenReturn(inv.getArgument(0));
+                return s;
+            });
+            when(sb.getObjective(name)).thenReturn(obj);
+            return obj;
+        }
+        @Override public void unregisterObjective(String name) {
+            // no-op in fake
         }
     }
 

@@ -125,9 +125,6 @@ public class GameIntegrationTest {
         // Two generic wool markers → assigned RED, GREEN by MarkerEngine
         fakeMc.addMarker("c2w_game", new BlockPos(10, 64, 10), "map_marker", "wool");
         fakeMc.addMarker("c2w_game", new BlockPos(20, 64, 20), "map_marker", "wool");
-        // Capture points for the two wools
-        fakeMc.addMarker("c2w_game", new BlockPos(10, 64, 10), "map_marker", "cap-red");
-        fakeMc.addMarker("c2w_game", new BlockPos(20, 64, 20), "map_marker", "cap-green");
         // Elevator capture box (100,60,100) - (110,70,110)
         fakeMc.addMarker("c2w_game", new BlockPos(100, 60, 100), "map_marker", "boundary-woolcap-elevator-1");
         fakeMc.addMarker("c2w_game", new BlockPos(110, 70, 110), "map_marker", "boundary-woolcap-elevator-2");

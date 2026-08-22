@@ -12,10 +12,12 @@ import net.klaaswhite.c2w.domain.managers.LayoutManager;
 import net.klaaswhite.c2w.adapter.managers.GameManager;
 import net.klaaswhite.c2w.adapter.managers.MarkerManager;
 import net.klaaswhite.c2w.adapter.managers.PlayerManager;
+import net.klaaswhite.c2w.adapter.minecraft.MinecraftManager;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.ArrayList;
+import java.util.List;
 import java.util.function.Consumer;
 
 public class C2WCommand extends BaseCommand {
@@ -25,6 +27,7 @@ public class C2WCommand extends BaseCommand {
     private final PlayerManager playerManager;
     private final Consumer<Void> onReset;
     private final WoolTimer woolTimer;
+    private final MinecraftManager mc;
 
     public C2WCommand(
             JavaPlugin plugin,
@@ -33,7 +36,8 @@ public class C2WCommand extends BaseCommand {
             LayoutManager layoutManager,
             PlayerManager playerManager,
             Consumer<Void> onReset,
-            WoolTimer woolTimer
+            WoolTimer woolTimer,
+            MinecraftManager mc
     ) {
         super(plugin);
         this.gameManager = gameManager;
@@ -42,6 +46,7 @@ public class C2WCommand extends BaseCommand {
         this.playerManager = playerManager;
         this.onReset = onReset;
         this.woolTimer = woolTimer;
+        this.mc = mc;
         createCommandChain();
         register();
     }
@@ -84,15 +89,19 @@ public class C2WCommand extends BaseCommand {
         layoutCommand.addChoice("info", layoutInfoCommand);
         layoutCommand.addChoice("select", layoutSelectCommand);
 
-        var teamJoinCommand = new CommandPiece(null, this::teamJoin);
-        var teamJoinTarget = new CommandPiece(teamJoinCommand, null);
-        var teamJoinTeam = new CommandPiece(teamJoinTarget, null);
-        var teamLeaveCommand = new CommandPiece(null, this::teamLeave);
+        var teamJoinHandler = new CommandPiece(null, this::teamJoin);
+        var teamJoinTeamChoice = new ListChoiceCommandPiece(
+                teamJoinHandler, null, java.util.List.of("Red", "Blue", "Spectator"));
+        var teamJoinPlayerChoice = new DynamicListChoiceCommandPiece(
+                teamJoinTeamChoice, null, this::onlinePlayerNames);
+        var teamLeaveHandler = new CommandPiece(null, this::teamLeave);
+        var teamLeavePlayerChoice = new DynamicListChoiceCommandPiece(
+                teamLeaveHandler, null, this::onlinePlayerNames);
         var teamListCommand = new CommandPiece(null, this::teamList);
         var teamAutoCommand = new CommandPiece(null, this::teamAuto);
         var teamCommand = new TreeChoiceCommandPiece(null);
-        teamCommand.addChoice("join", teamJoinTeam);
-        teamCommand.addChoice("leave", teamLeaveCommand);
+        teamCommand.addChoice("join", teamJoinPlayerChoice);
+        teamCommand.addChoice("leave", teamLeavePlayerChoice);
         teamCommand.addChoice("list", teamListCommand);
         teamCommand.addChoice("auto", teamAutoCommand);
 
@@ -113,7 +122,7 @@ public class C2WCommand extends BaseCommand {
         c2wCommand.addChoice("team", teamCommand);
         c2wCommand.addChoice("status", statusCommand);
 
-        initialCommandPiece = c2wCommand;
+        initialCommandPiece = new ContextSensitiveRoot(c2wCommand, this::contextChoices);
     }
 
     private boolean checkAdmin(CommandInput input, org.bukkit.command.CommandSender sender) {
@@ -122,6 +131,45 @@ public class C2WCommand extends BaseCommand {
             return true;
         }
         return false;
+    }
+
+    private List<String> contextChoices(CommandInput input) {
+        // Console / non-player senders: show full choice set
+        if (!(input.commandSender instanceof Player player)) {
+            return null;
+        }
+
+        // Non-admin: only status is meaningful (all other /c2w commands require admin)
+        if (!player.hasPermission("c2w.admin")) {
+            return java.util.List.of("status");
+        }
+
+        var state = gameManager.getState();
+
+        // Commands available to admins regardless of state
+        var choices = new ArrayList<>(java.util.List.of("status", "reset", "reload", "setwooltimer", "getwooltimer"));
+
+        switch (state) {
+            case NOT_STARTED -> {
+                choices.add("init");
+            }
+            case DRAFT_CREATED -> {
+                choices.add("start");
+                choices.add("layout");
+                choices.add("team");
+                choices.add("preview");
+                choices.add("ensurewools");
+            }
+            case GAME_IN_PROGRESS -> {
+                choices.add("end");
+                choices.add("team");
+            }
+            case GAME_ENDED -> {
+                // Only reset/status — already covered by the defaults above
+            }
+        }
+
+        return choices;
     }
 
     public boolean init(CommandInput commandInput) {
@@ -321,12 +369,12 @@ public class C2WCommand extends BaseCommand {
         if (checkAdmin(commandInput, s)) return true;
         if (!(commandInput.commandSender instanceof Player player))
             return false;
-        if (commandInput.strings.length < 5) {
+        if (commandInput.strings.length < 4) {
             player.sendMessage("Usage: /c2w team join <player> <team>");
             return false;
         }
-        var targetName = commandInput.strings[3];
-        var teamName = commandInput.strings[4];
+        var targetName = commandInput.strings[2];
+        var teamName = commandInput.strings[3];
         var team = ManagedTeam.teams.get(teamName);
         if (team == null) {
             player.sendMessage("Team '" + teamName + "' not found. Available teams: Red, Blue, Spectator");
@@ -347,11 +395,11 @@ public class C2WCommand extends BaseCommand {
         if (checkAdmin(commandInput, s)) return true;
         if (!(commandInput.commandSender instanceof Player player))
             return false;
-        if (commandInput.strings.length < 4) {
+        if (commandInput.strings.length < 3) {
             player.sendMessage("Usage: /c2w team leave <player>");
             return false;
         }
-        var targetName = commandInput.strings[3];
+        var targetName = commandInput.strings[2];
         var target = playerManager.getPlayer(targetName);
         if (target == null) {
             player.sendMessage("Player '" + targetName + "' not found.");
@@ -398,6 +446,10 @@ public class C2WCommand extends BaseCommand {
 
     public java.util.List<String> availableLayoutNames(CommandInput commandInput) {
         return layoutManager.getLayoutNames();
+    }
+
+    public java.util.List<String> onlinePlayerNames(CommandInput commandInput) {
+        return mc.server().getOnlinePlayerNames();
     }
 
     @Override

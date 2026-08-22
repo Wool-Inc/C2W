@@ -38,7 +38,7 @@ class EventsTest {
             public void cancel(Object taskId) {}
         });
         return new Wool(mc, woolTimer, color, new net.klaaswhite.c2w.domain.model.BlockPos(0, 64, 0),
-                "game", "cap-" + color.name().toLowerCase());
+                "game");
     }
 
     private ManagedPlayer createPlayer(String name) {
@@ -66,6 +66,14 @@ class EventsTest {
     void woolDroppedEventImplementsC2WEvent() {
         var wool = createWool(WoolColor.BLUE);
         var event = new WoolDroppedEvent(wool);
+        assertInstanceOf(C2WEvent.class, event);
+    }
+
+    @Test
+    @DisplayName("WoolPickedUpEvent implements C2WEvent")
+    void woolPickedUpEventImplementsC2WEvent() {
+        var wool = createWool(WoolColor.GREEN);
+        var event = new WoolPickedUpEvent(wool);
         assertInstanceOf(C2WEvent.class, event);
     }
 
@@ -148,6 +156,16 @@ class EventsTest {
 
         assertSame(wool, event.getWool());
         assertEquals(WoolColor.YELLOW, event.getWool().getColor());
+    }
+
+    @Test
+    @DisplayName("WoolPickedUpEvent carries correct wool")
+    void woolPickedUpEventCarriesWool() {
+        var wool = createWool(WoolColor.RED);
+        var event = new WoolPickedUpEvent(wool);
+
+        assertSame(wool, event.getWool());
+        assertEquals(WoolColor.RED, event.getWool().getColor());
     }
 
     // --- StartGameEvent ---

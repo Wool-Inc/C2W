@@ -139,4 +139,43 @@ class WorldManagerTest {
         assertTrue(draft.isTransient());
         assertTrue(game.isTransient());
     }
+
+    // ---------------------------------------------------------------
+    // Team selection platform geometry (draft world)
+    // ---------------------------------------------------------------
+
+    @Test
+    @DisplayName("resolveTeamSelectionAt maps the red platform to Red")
+    void resolveTeamSelectionAt_redPlatform() {
+        assertEquals("Red", WorldManager.resolveTeamSelectionAt(-10, 65, 0));
+        assertEquals("Red", WorldManager.resolveTeamSelectionAt(-11, 65, -1));
+        assertEquals("Red", WorldManager.resolveTeamSelectionAt(-9, 65, 1));
+    }
+
+    @Test
+    @DisplayName("resolveTeamSelectionAt maps the blue platform to Blue")
+    void resolveTeamSelectionAt_bluePlatform() {
+        assertEquals("Blue", WorldManager.resolveTeamSelectionAt(10, 65, 0));
+        assertEquals("Blue", WorldManager.resolveTeamSelectionAt(9, 65, -1));
+        assertEquals("Blue", WorldManager.resolveTeamSelectionAt(11, 65, 1));
+    }
+
+    @Test
+    @DisplayName("resolveTeamSelectionAt maps the spectator platform to Spectator")
+    void resolveTeamSelectionAt_spectatorPlatform() {
+        assertEquals("Spectator", WorldManager.resolveTeamSelectionAt(0, 71, 10));
+        assertEquals("Spectator", WorldManager.resolveTeamSelectionAt(1, 71, 9));
+        assertEquals("Spectator", WorldManager.resolveTeamSelectionAt(-1, 71, 11));
+    }
+
+    @Test
+    @DisplayName("resolveTeamSelectionAt returns null away from the platforms or at the wrong height")
+    void resolveTeamSelectionAt_null() {
+        assertNull(WorldManager.resolveTeamSelectionAt(0, 65, 0));   // spawn platform
+        assertNull(WorldManager.resolveTeamSelectionAt(-5, 65, 0));  // red walkway
+        assertNull(WorldManager.resolveTeamSelectionAt(5, 65, 0));   // blue walkway
+        assertNull(WorldManager.resolveTeamSelectionAt(0, 71, 2));   // beside spectator pad
+        assertNull(WorldManager.resolveTeamSelectionAt(-10, 66, 0)); // wrong height (jumping)
+        assertNull(WorldManager.resolveTeamSelectionAt(10, 64, 0));  // on the platform base block
+    }
 }

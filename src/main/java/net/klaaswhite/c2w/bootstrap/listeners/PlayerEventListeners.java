@@ -4,6 +4,7 @@ import net.klaaswhite.c2w.adapter.managers.EventManager;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.PlayerDeathEvent;
+import org.bukkit.event.player.PlayerChangedWorldEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
 
@@ -17,6 +18,11 @@ public class PlayerEventListeners implements Listener {
 
     @EventHandler
     public void onPlayerJoin(PlayerJoinEvent event) {
+        this.eventManager.pushMinecraftEvent(event);
+    }
+
+    @EventHandler
+    public void onPlayerChangedWorld(PlayerChangedWorldEvent event) {
         this.eventManager.pushMinecraftEvent(event);
     }
 

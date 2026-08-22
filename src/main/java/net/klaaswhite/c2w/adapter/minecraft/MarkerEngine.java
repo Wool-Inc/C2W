@@ -98,8 +98,7 @@ public class MarkerEngine {
 
             WoolColor color = colors[i];
             // ponytail: simple assignment, rotate if more than 4 markers
-            String capMarkerName = "cap-" + color.name().toLowerCase();
-            var wool = new Wool(mc, woolTimer, color, spawnPos, worldName, capMarkerName);
+            var wool = new Wool(mc, woolTimer, color, spawnPos, worldName);
             wools.add(wool);
             wool.placeEntityInWorld();
         }

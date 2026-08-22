@@ -198,7 +198,7 @@ class BoundaryManagerTest {
         var wool = new Wool(mc, new net.klaaswhite.c2w.domain.game.WoolTimer(new net.klaaswhite.c2w.domain.game.WoolTimer.Scheduler() {
             public Object scheduleRepeating(Runnable task, long delay, long interval) { return null; }
             public void cancel(Object taskId) {}
-        }), WoolColor.RED, new BlockPos(0, 64, 0), "game", "cap-red");
+        }), WoolColor.RED, new BlockPos(0, 64, 0), "game");
         var event = new WoolDroppedEvent(wool);
         assertDoesNotThrow(() -> boundaryManager.onWoolDropped(event));
     }
@@ -225,7 +225,7 @@ class BoundaryManagerTest {
         var wool = new Wool(mc, new net.klaaswhite.c2w.domain.game.WoolTimer(new net.klaaswhite.c2w.domain.game.WoolTimer.Scheduler() {
             public Object scheduleRepeating(Runnable task, long delay, long interval) { return null; }
             public void cancel(Object taskId) {}
-        }), WoolColor.RED, new BlockPos(0, 64, 0), "game", "cap-red");
+        }), WoolColor.RED, new BlockPos(0, 64, 0), "game");
         var handle = mock(PlayerHandle.class);
         when(handle.getUniqueId()).thenReturn(UUID.randomUUID());
         when(handle.getName()).thenReturn("Alice");
