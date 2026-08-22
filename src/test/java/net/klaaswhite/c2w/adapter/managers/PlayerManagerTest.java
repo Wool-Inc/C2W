@@ -71,8 +71,12 @@ class PlayerManagerTest {
                 eq(net.klaaswhite.c2w.domain.events.PreviewRequestEvent.class), any());
         verify(eventManager).registerInternalEvent(
                 eq(net.klaaswhite.c2w.domain.events.EndGameEvent.class), any());
+        verify(eventManager).registerInternalEvent(
+                eq(net.klaaswhite.c2w.domain.events.ResetEvent.class), any());
         verify(eventManager).registerMinecraftEvent(
                 eq(org.bukkit.event.player.PlayerJoinEvent.class), any());
+        verify(eventManager).registerMinecraftEvent(
+                eq(org.bukkit.event.player.PlayerChangedWorldEvent.class), any());
     }
 
     @Test
@@ -267,6 +271,89 @@ class PlayerManagerTest {
     }
 
     // ---------------------------------------------------------------
+    // onReset / clearAllTeams / onPlayerChangedWorld
+    // ---------------------------------------------------------------
+
+    @Test
+    @DisplayName("onReset clears every player from every team and removes scoreboard teams")
+    void onReset_clearsAllTeams() {
+        var manager = createManager();
+
+        // Register a player (with Bukkit mapping) and put them on a team.
+        registerPlayer(manager, "Alice");
+        manager.getPlayerRegistry().ensureTeams();
+        manager.addPlayersToTeam("Red", java.util.List.of("Alice"));
+        assertEquals("Red", manager.getPlayer("Alice").getTeam().teamName);
+
+        manager.onReset(new net.klaaswhite.c2w.domain.events.ResetEvent());
+
+        assertNull(manager.getPlayer("Alice").getTeam());
+        verify(scoreboards).removeTeam("Red");
+        verify(scoreboards).removeTeam("Blue");
+        verify(scoreboards).removeTeam("Spectator");
+    }
+
+    @Test
+    @DisplayName("onPlayerChangedWorld into the lobby removes the player from their team")
+    void onPlayerChangedWorld_intoLobby_clearsTeam() {
+        var manager = createManager();
+        var worldManager = mock(WorldManager.class);
+        managers.worldManager = worldManager;
+
+        var lobbyWorld = mock(World.class);
+        when(lobbyWorld.getName()).thenReturn("c2w_lobby");
+        var lobby = mock(ManagedWorld.class);
+        when(lobby.getName()).thenReturn("c2w_lobby");
+        when(lobby.getWorld()).thenReturn(lobbyWorld);
+        when(worldManager.getLobbyWorld()).thenReturn(lobby);
+
+        // Register "Alice" with a Bukkit player handle so the world-change
+        // handler can look them up by Bukkit Player.
+        var player = registerPlayer(manager, "Alice");
+        when(player.getWorld()).thenReturn(lobbyWorld);
+        manager.getPlayerRegistry().ensureTeams();
+        manager.addPlayersToTeam("Red", java.util.List.of("Alice"));
+        assertEquals("Red", manager.getPlayer("Alice").getTeam().teamName);
+
+        var event = new org.bukkit.event.player.PlayerChangedWorldEvent(player, mock(World.class));
+        manager.onPlayerChangedWorld(event);
+
+        assertNull(manager.getPlayer("Alice").getTeam());
+        verify(scoreboards).removePlayerFromTeam("Alice", "Red");
+    }
+
+    @Test
+    @DisplayName("onPlayerChangedWorld into a non-lobby world keeps the team")
+    void onPlayerChangedWorld_notLobby_keepsTeam() {
+        var manager = createManager();
+        var worldManager = mock(WorldManager.class);
+        managers.worldManager = worldManager;
+
+        var lobbyWorld = mock(World.class);
+        when(lobbyWorld.getName()).thenReturn("c2w_lobby");
+        var lobby = mock(ManagedWorld.class);
+        when(lobby.getName()).thenReturn("c2w_lobby");
+        when(lobby.getWorld()).thenReturn(lobbyWorld);
+        when(worldManager.getLobbyWorld()).thenReturn(lobby);
+
+        var player = registerPlayer(manager, "Alice");
+        // Player moves into a game world instead of the lobby.
+        var gameWorld = mock(World.class);
+        when(gameWorld.getName()).thenReturn("c2w_game");
+        when(player.getWorld()).thenReturn(gameWorld);
+
+        manager.getPlayerRegistry().ensureTeams();
+        manager.addPlayersToTeam("Red", java.util.List.of("Alice"));
+        assertEquals("Red", manager.getPlayer("Alice").getTeam().teamName);
+
+        var event = new org.bukkit.event.player.PlayerChangedWorldEvent(player, mock(World.class));
+        manager.onPlayerChangedWorld(event);
+
+        assertEquals("Red", manager.getPlayer("Alice").getTeam().teamName);
+        verify(scoreboards, never()).removePlayerFromTeam(anyString(), anyString());
+    }
+
+    // ---------------------------------------------------------------
     // close()
     // ---------------------------------------------------------------
 
@@ -289,5 +376,25 @@ class PlayerManagerTest {
             manager.close();
             manager.close();
         });
+    }
+
+    // ---------------------------------------------------------------
+    // helpers
+    // ---------------------------------------------------------------
+
+    /**
+     * Register a player through the exact ensurePlayers() flow used in
+     * production so the {@code playersByBukkitPlayer} map is populated too.
+     */
+    private Player registerPlayer(PlayerManager manager, String name) {
+        var player = mock(Player.class);
+        when(player.getName()).thenReturn(name);
+        when(player.getUniqueId()).thenReturn(UUID.randomUUID());
+        when(server.getOnlinePlayerNames()).thenReturn(java.util.List.of(name));
+        when(players.getHandle(name)).thenReturn(player);
+
+        manager.ensurePlayers();
+        assertNotNull(manager.getPlayer(player), "player should be wired into the map");
+        return player;
     }
 }

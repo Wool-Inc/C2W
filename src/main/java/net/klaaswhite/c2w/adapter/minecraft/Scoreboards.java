@@ -1,5 +1,6 @@
 package net.klaaswhite.c2w.adapter.minecraft;
 
+import org.bukkit.scoreboard.Objective;
 import org.bukkit.scoreboard.Scoreboard;
 import org.bukkit.scoreboard.Team;
 import org.jspecify.annotations.Nullable;
@@ -33,4 +34,13 @@ public interface Scoreboards {
 
     /** Get the main server scoreboard. */
     Scoreboard getMainScoreboard();
+
+    /**
+     * Register (or fetch) a sidebar objective with the given name and display.
+     * Returns the objective so callers can set scores.
+     */
+    Objective registerSidebarObjective(String name, String displayName);
+
+    /** Remove a sidebar objective by name, if present. */
+    void unregisterObjective(String name);
 }

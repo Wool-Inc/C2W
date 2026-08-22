@@ -221,7 +221,7 @@ class MarkerManagerTest {
 
         when(markers.spawnMarker("c2w_game", new BlockPos(5, 70, 5))).thenReturn(null);
 
-        manager.createMarker(caller, "looking", "cap-blue");
+        manager.createMarker(caller, "looking", "spawnpoint");
         verify(markers).spawnMarker("c2w_game", new BlockPos(5, 70, 5));
     }
 
@@ -348,10 +348,6 @@ class MarkerManagerTest {
     void markerNamesContainsExpected() {
         assertNotNull(MarkerManager.MARKER_NAMES);
         assertTrue(MarkerManager.MARKER_NAMES.contains("wool"));
-        assertTrue(MarkerManager.MARKER_NAMES.contains("cap-red"));
-        assertTrue(MarkerManager.MARKER_NAMES.contains("cap-green"));
-        assertTrue(MarkerManager.MARKER_NAMES.contains("cap-blue"));
-        assertTrue(MarkerManager.MARKER_NAMES.contains("cap-yellow"));
-        assertEquals(9, MarkerManager.MARKER_NAMES.size());
+        assertEquals(5, MarkerManager.MARKER_NAMES.size());
     }
 }

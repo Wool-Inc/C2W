@@ -35,6 +35,15 @@ public class EntityManager implements AutoCloseable {
         itemPickedUpEventListeners.computeIfAbsent(id, k -> new ArrayList<>()).add(callBack);
     }
 
+    /**
+     * Register a listener for pickup events on an item entity identified by UUID.
+     * Use this when you know the UUID but cannot obtain a live {@link Item} reference
+     * (e.g. the entity's chunk may not be loaded).
+     */
+    public void addItemPickedUpEventListener(UUID itemUuid, Consumer<EntityPickupItemEvent> callBack) {
+        itemPickedUpEventListeners.computeIfAbsent(itemUuid, k -> new ArrayList<>()).add(callBack);
+    }
+
     public void removeItemPickedUpEventListener(Item item, Consumer<EntityPickupItemEvent> callBack) {
         var id = item.getUniqueId();
         var listeners = itemPickedUpEventListeners.get(id);

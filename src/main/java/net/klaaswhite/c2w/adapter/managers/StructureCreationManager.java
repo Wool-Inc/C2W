@@ -238,6 +238,16 @@ public class StructureCreationManager implements AutoCloseable {
             }
         }
 
+        // Remove any visualization armor stands so they are not captured in the NBT.
+        // Use the thorough sweep so stands loaded from a previous save (which are
+        // not in the tracking map) are also removed. Entity.remove() is deferred to
+        // the end of the tick in modern Spigot/Paper, so ejectVisualizationArmorStands
+        // first teleports the stands outside the capture box before removing them.
+        World world = mc.worlds().getWorld(worldName);
+        if (world != null) {
+            ejectVisualizationArmorStands(world);
+        }
+
         try {
             exportWorldToNbt(worldName, typeName, id, dims[0], dims[1], dims[2]);
         } catch (Exception e) {
@@ -541,21 +551,41 @@ public class StructureCreationManager implements AutoCloseable {
     private void restoreSessions() {
         File container = mc.worlds().getWorldContainer();
         if (container == null) return;
-        File[] worlds = container.listFiles();
-        if (worlds == null) return;
-        for (File dir : worlds) {
-            if (!dir.isDirectory() || !dir.getName().startsWith("c2w_create_")) continue;
-            String suffix = dir.getName().substring("c2w_create_".length());
-            int idx = suffix.indexOf('_');
-            if (idx < 0) continue;
-            String typeName = suffix.substring(0, idx);
-            String id = suffix.substring(idx + 1);
-            if (mc.worlds().createVoidWorld(dir.getName(), World.Environment.NORMAL) == null) continue;
-            sessions.put(dir.getName(), new CreationSession(dir.getName(), typeName, id, null, 0f));
-            int[] dims = structureTypeConfig.getDimensions(typeName);
-            if (dims != null) {
-                int cx = dims[0] / 2, cy = dims[1] / 2, cz = dims[2] / 2;
-                startParticleBoundary(dir.getName(), dims[0], dims[1], dims[2], cx, cy, cz);
+
+        // Collect all directories that could contain c2w_create_* worlds,
+        // including per-world dimension subdirectories.
+        java.util.List<File> searchDirs = new java.util.ArrayList<>();
+        searchDirs.add(container);
+
+        // Add per-world dimension/minecraft directories
+        File[] topDirs = container.listFiles(File::isDirectory);
+        if (topDirs != null) {
+            for (File topDir : topDirs) {
+                File dimsMinecraft = new File(topDir,
+                        "dimensions" + File.separator + "minecraft");
+                if (dimsMinecraft.isDirectory()) {
+                    searchDirs.add(dimsMinecraft);
+                }
+            }
+        }
+
+        for (File searchDir : searchDirs) {
+            File[] worlds = searchDir.listFiles();
+            if (worlds == null) continue;
+            for (File dir : worlds) {
+                if (!dir.isDirectory() || !dir.getName().startsWith("c2w_create_")) continue;
+                String suffix = dir.getName().substring("c2w_create_".length());
+                int idx = suffix.indexOf('_');
+                if (idx < 0) continue;
+                String typeName = suffix.substring(0, idx);
+                String id = suffix.substring(idx + 1);
+                if (mc.worlds().createVoidWorld(dir.getName(), World.Environment.NORMAL) == null) continue;
+                sessions.put(dir.getName(), new CreationSession(dir.getName(), typeName, id, null, 0f));
+                int[] dims = structureTypeConfig.getDimensions(typeName);
+                if (dims != null) {
+                    int cx = dims[0] / 2, cy = dims[1] / 2, cz = dims[2] / 2;
+                    startParticleBoundary(dir.getName(), dims[0], dims[1], dims[2], cx, cy, cz);
+                }
             }
         }
     }
@@ -606,26 +636,48 @@ public class StructureCreationManager implements AutoCloseable {
             removeVisualizationArmorStands(world);
             return false;
         }
-        var managedMarkers = mc.markers().findMarkersInWorld(worldName, "resourcespot", null);
-        List<UUID> armorStandIds = new ArrayList<>();
-        for (var mm : managedMarkers) {
-            var pos = mm.getPosition();
-            var loc = new Location(world, pos.x() + 0.5, pos.y(), pos.z() + 0.5);
-            String markerName = mm.getName();
-            var stand = world.spawn(loc, ArmorStand.class, as -> {
-                as.setCustomName(markerName);
-                as.setCustomNameVisible(true);
-                as.setVisible(true);
-                as.setGravity(false);
-                as.setInvulnerable(true);
-                as.setMarker(false);
-                as.setGlowing(true);
-                as.setSmall(true);
-            });
-            armorStandIds.add(stand.getUniqueId());
+        // If there are stray visualization stands (e.g. loaded from a saved NBT)
+        // but nothing tracked, clean them up and stay disabled.
+        if (world.getEntitiesByClass(ArmorStand.class).stream()
+                .anyMatch(as -> as.isGlowing() && as.isSmall() && as.isCustomNameVisible()
+                        && as.isInvulnerable() && !as.hasGravity())) {
+            removeAllVisualizationArmorStands(world);
+            return false;
         }
+        List<UUID> armorStandIds = new ArrayList<>();
+
+        // Resource spot markers
+        var resourceMarkers = mc.markers().findMarkersInWorld(worldName, "resourcespot", null);
+        for (var mm : resourceMarkers) {
+            spawnVisualizationStand(world, armorStandIds, mm.getPosition(), mm.getName());
+        }
+
+        // Game markers (wools, spawnpoints, capture areas, boundaries, etc.)
+        var gameMarkers = getGameMarkersGrouped(worldName);
+        for (var entry : gameMarkers.entrySet()) {
+            for (var me : entry.getValue()) {
+                spawnVisualizationStand(world, armorStandIds, me.getPosition(), entry.getKey());
+            }
+        }
+
         visualizationArmorStands.put(worldName, armorStandIds);
         return true;
+    }
+
+    private void spawnVisualizationStand(World world, List<UUID> armorStandIds,
+                                         BlockPos pos, String name) {
+        var loc = new Location(world, pos.x() + 0.5, pos.y(), pos.z() + 0.5);
+        var stand = world.spawn(loc, ArmorStand.class, as -> {
+            as.setCustomName(name);
+            as.setCustomNameVisible(true);
+            as.setVisible(true);
+            as.setGravity(false);
+            as.setInvulnerable(true);
+            as.setMarker(false);
+            as.setGlowing(true);
+            as.setSmall(true);
+        });
+        armorStandIds.add(stand.getUniqueId());
     }
 
     private void removeVisualizationArmorStands(World world) {
@@ -636,6 +688,51 @@ public class StructureCreationManager implements AutoCloseable {
             var entity = Bukkit.getEntity(id);
             if (entity != null) entity.remove();
         }
+    }
+
+    /**
+     * Remove every visualization armor stand from the world before the structure
+     * is exported to NBT.
+     *
+     * <p>Plain {@link org.bukkit.entity.Entity#remove()} is deferred to the end
+     * of the current tick in modern Spigot/Paper, so calling it immediately
+     * before {@code createStructure(...)} (which captures entities) would still
+     * include the stands in the saved NBT — they would then reappear the next
+     * time the structure is modified. To make the removal effective within the
+     * same tick we first teleport the stands outside the capture bounding box;
+     * the subsequent capture therefore excludes them, and the deferred
+     * {@code remove()} cleans them up afterwards.
+     */
+    private void ejectVisualizationArmorStands(World world) {
+        // A point guaranteed to lie outside the [0,w]x[0,h]x[0,d] capture box
+        // (the export always uses origin 0,0,0), so the stands are not captured.
+        var outside = new Location(world, -64, -64, -64);
+        for (ArmorStand as : world.getEntitiesByClass(ArmorStand.class)) {
+            if (as.isGlowing() && as.isSmall() && as.isCustomNameVisible()
+                    && as.isInvulnerable() && !as.hasGravity()) {
+                as.teleport(outside);
+                as.remove();
+            }
+        }
+        visualizationArmorStands.remove(world.getName());
+    }
+
+    /**
+     * Remove every armor stand in the world that matches the visualization
+     * signature (glowing, small, custom-name-visible, invulnerable, no gravity).
+     * Unlike {@link #removeVisualizationArmorStands(World)} this does not rely on
+     * the tracking map, so it also cleans up stands that were loaded from a
+     * previously-saved NBT (which are not tracked) and stray stands left behind
+     * by a prior toggle.
+     */
+    private void removeAllVisualizationArmorStands(World world) {
+        for (ArmorStand as : world.getEntitiesByClass(ArmorStand.class)) {
+            if (as.isGlowing() && as.isSmall() && as.isCustomNameVisible()
+                    && as.isInvulnerable() && !as.hasGravity()) {
+                as.remove();
+            }
+        }
+        visualizationArmorStands.remove(world.getName());
     }
 
     private void cleanupVisualization(String worldName) {

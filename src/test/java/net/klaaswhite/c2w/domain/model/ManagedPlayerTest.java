@@ -55,7 +55,7 @@ class ManagedPlayerTest {
             public Object scheduleRepeating(Runnable task, long delay, long interval) { return null; }
             public void cancel(Object taskId) {}
         });
-        return new Wool(mc, woolTimer, color, new BlockPos(0, 64, 0), "game", "cap-" + color.name().toLowerCase());
+        return new Wool(mc, woolTimer, color, new BlockPos(0, 64, 0), "game");
     }
 
     // --- Basic properties ---

@@ -1,5 +1,6 @@
 package net.klaaswhite.c2w.bootstrap.minecraft;
 
+import java.lang.reflect.Field;
 import net.klaaswhite.c2w.adapter.minecraft.*;
 import net.klaaswhite.c2w.domain.model.BlockPos;
 import net.klaaswhite.c2w.domain.model.ItemStackRef;
@@ -10,6 +11,8 @@ import net.klaaswhite.c2w.domain.model.StructureRotation;
 import net.klaaswhite.c2w.domain.model.BossBarStyle;
 import net.klaaswhite.c2w.domain.model.WoolColor;
 import org.bukkit.Bukkit;
+import org.bukkit.GameMode;
+import org.bukkit.GameRule;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
@@ -29,6 +32,8 @@ import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
+import org.bukkit.scoreboard.DisplaySlot;
+import org.bukkit.scoreboard.Objective;
 import org.bukkit.scoreboard.Scoreboard;
 import org.bukkit.scoreboard.Team;
 import org.bukkit.structure.Palette;
@@ -42,9 +47,11 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -62,7 +69,42 @@ public class BukkitMinecraftManager implements MinecraftManager, AutoCloseable {
     private final NamespacedKey markerKey;
     private final Map<String, Structure> structureCache = new HashMap<>();
     private final AtomicLong structureIdCounter = new AtomicLong(0);
+    /**
+     * Worlds already flagged as having no world clock (MC 26.1+). Used to avoid
+     * logging the same warning on every EnvironmentManager heartbeat tick.
+     */
+    private final Set<String> warnedNoClockWorlds = new HashSet<>();
     private net.klaaswhite.c2w.adapter.managers.EventManager eventManager; // ponytail: late-set, wired by App after both exist
+
+    /**
+     * The GameRule static fields were renamed between API builds: the running server
+     * (paper-api 26.1.2 build.61) exposes {@code DO_DAYLIGHT_CYCLE} /
+     * {@code DO_WEATHER_CYCLE}, while the spigot-api SNAPSHOT the plugin compiles
+     * against exposes {@code ADVANCE_TIME} / {@code ADVANCE_WEATHER}. Referencing
+     * either constant directly would throw {@link NoSuchFieldError} on the other API,
+     * so the correct field is located at runtime (new name first, old name as
+     * fallback) and cached here.
+     */
+    private static final GameRule<Boolean> DAYLIGHT_CYCLE_RULE =
+            resolveGameRule("ADVANCE_TIME", "DO_DAYLIGHT_CYCLE");
+    private static final GameRule<Boolean> WEATHER_CYCLE_RULE =
+            resolveGameRule("ADVANCE_WEATHER", "DO_WEATHER_CYCLE");
+
+    @SuppressWarnings("unchecked")
+    private static @Nullable GameRule<Boolean> resolveGameRule(String... fieldNames) {
+        for (String fieldName : fieldNames) {
+            try {
+                Field field = GameRule.class.getField(fieldName);
+                return (GameRule<Boolean>) field.get(null);
+            } catch (NoSuchFieldException | IllegalAccessException ignored) {
+                // try the next candidate name
+            }
+        }
+        Bukkit.getLogger().warning("[c2w] None of the GameRule fields "
+                + String.join(", ", fieldNames) + " exist in this server's API; "
+                + "daylight/weather cycle pinning is disabled");
+        return null;
+    }
 
     public BukkitMinecraftManager(JavaPlugin plugin) {
         this.plugin = plugin;
@@ -240,6 +282,20 @@ public class BukkitMinecraftManager implements MinecraftManager, AutoCloseable {
         }
 
         @Override
+        public void setRespawnLocation(String playerName, BlockPos pos, String worldName, boolean force) {
+            try {
+                Player player = Bukkit.getPlayer(playerName);
+                World world = Bukkit.getWorld(worldName);
+                if (player == null || world == null) {
+                    return;
+                }
+                player.setRespawnLocation(new Location(world, pos.x() + 0.5, pos.y(), pos.z() + 0.5), force);
+            } catch (Exception e) {
+                plugin.getLogger().log(Level.WARNING, "Failed to set respawn location for player " + playerName, e);
+            }
+        }
+
+        @Override
         public void sendMessage(String playerName, String message) {
             Player player = Bukkit.getPlayer(playerName);
             if (player != null) {
@@ -282,6 +338,12 @@ public class BukkitMinecraftManager implements MinecraftManager, AutoCloseable {
             } catch (Exception e) {
                 plugin.getLogger().log(Level.WARNING, "Failed to add potion effect to player " + playerName, e);
             }
+        }
+
+        @Override
+        public boolean hasPotionEffect(String playerName, PotionEffectType type) {
+            Player player = Bukkit.getPlayer(playerName);
+            return player != null && player.hasPotionEffect(type);
         }
 
         @Override
@@ -351,6 +413,18 @@ public class BukkitMinecraftManager implements MinecraftManager, AutoCloseable {
                     player.playSound(player.getLocation(), sound, volume, pitch);
                 } catch (IllegalArgumentException e) {
                     // Unknown sound name — ignore
+                }
+            }
+        }
+
+        @Override
+        public void setGameMode(String playerName, String gameMode) {
+            Player player = Bukkit.getPlayer(playerName);
+            if (player != null) {
+                try {
+                    player.setGameMode(GameMode.valueOf(gameMode));
+                } catch (IllegalArgumentException e) {
+                    plugin.getLogger().warning("Unknown game mode: " + gameMode);
                 }
             }
         }
@@ -478,6 +552,19 @@ public class BukkitMinecraftManager implements MinecraftManager, AutoCloseable {
                 if (paperFolder.exists()) {
                     deleteFolder(paperFolder);
                 }
+                // Paper 1.21+ per-world dimension path:
+                // <container>/<world>/dimensions/minecraft/<name>/
+                File[] topDirs = container.listFiles(File::isDirectory);
+                if (topDirs != null) {
+                    for (File topDir : topDirs) {
+                        File perWorldFolder = new File(topDir,
+                                "dimensions" + File.separator + "minecraft"
+                                        + File.separator + name);
+                        if (perWorldFolder.exists()) {
+                            deleteFolder(perWorldFolder);
+                        }
+                    }
+                }
             } catch (Exception e) {
                 plugin.getLogger().log(Level.WARNING, "Failed to delete world " + name, e);
             }
@@ -553,14 +640,71 @@ public class BukkitMinecraftManager implements MinecraftManager, AutoCloseable {
         }
 
         @Override
+        public void setTime(String worldName, long time) {
+            World world = Bukkit.getWorld(worldName);
+            if (world == null) {
+                return;
+            }
+            try {
+                world.setTime(time);
+            } catch (IllegalArgumentException e) {
+                // Dimension types without a world clock (nether, end, and
+                // custom flat/void worlds) cannot have their time set on
+                // MC 26.1+. Time pinning is a no-op for them, so swallow the
+                // documented exception and warn once per world instead of
+                // spamming every heartbeat tick.
+                if (warnedNoClockWorlds.add(worldName)) {
+                    plugin.getLogger().log(Level.FINE,
+                            "World " + worldName + " has no world clock; skipping time pinning", e);
+                }
+            }
+        }
+
+        @Override
+        public void setDoDaylightCycle(String worldName, boolean enabled) {
+            World world = Bukkit.getWorld(worldName);
+            if (world != null && DAYLIGHT_CYCLE_RULE != null) {
+                world.setGameRule(DAYLIGHT_CYCLE_RULE, enabled);
+            }
+        }
+
+        @Override
+        public void setStorm(String worldName, boolean storm) {
+            World world = Bukkit.getWorld(worldName);
+            if (world != null) {
+                world.setStorm(storm);
+            }
+        }
+
+        @Override
+        public void setThundering(String worldName, boolean thundering) {
+            World world = Bukkit.getWorld(worldName);
+            if (world != null) {
+                world.setThundering(thundering);
+            }
+        }
+
+        @Override
+        public void setDoWeatherCycle(String worldName, boolean enabled) {
+            World world = Bukkit.getWorld(worldName);
+            if (world != null && WEATHER_CYCLE_RULE != null) {
+                world.setGameRule(WEATHER_CYCLE_RULE, enabled);
+            }
+        }
+
+        @Override
         public @Nullable UUID dropItem(String worldName, BlockPos pos, String materialName, int count) {
             World world = Bukkit.getWorld(worldName);
             if (world == null) return null;
             Material mat = Material.matchMaterial(materialName);
-            if (mat != null) {
-                return world.dropItemNaturally(new Location(world, pos.x(), pos.y(), pos.z()), new ItemStack(mat, count)).getUniqueId();
-            }
-            return null;
+            if (mat == null) return null;
+            var item = world.dropItem(new Location(world, pos.x(), pos.y(), pos.z()), new ItemStack(mat, count), i -> {
+                i.setVelocity(new org.bukkit.util.Vector(0, 0, 0));
+                i.setGravity(false);
+            });
+            if (item == null) return null;
+            item.setPersistent(true);
+            return item.getUniqueId();
         }
 
         @Override
@@ -568,10 +712,14 @@ public class BukkitMinecraftManager implements MinecraftManager, AutoCloseable {
             World world = Bukkit.getWorld(worldName);
             if (world == null) return null;
             Material mat = Material.matchMaterial(item.materialName());
-            if (mat != null) {
-                return world.dropItemNaturally(new Location(world, pos.x(), pos.y(), pos.z()), new ItemStack(mat, item.count())).getUniqueId();
-            }
-            return null;
+            if (mat == null) return null;
+            var dropped = world.dropItem(new Location(world, pos.x(), pos.y(), pos.z()), new ItemStack(mat, item.count()), i -> {
+                i.setVelocity(new org.bukkit.util.Vector(0, 0, 0));
+                i.setGravity(false);
+            });
+            if (dropped == null) return null;
+            dropped.setPersistent(true);
+            return dropped.getUniqueId();
         }
 
         /** A chunk generator that produces empty chunks (void world). */
@@ -743,7 +891,15 @@ public class BukkitMinecraftManager implements MinecraftManager, AutoCloseable {
             if (team != null) {
                 team.unregister();
             }
-            return board.registerNewTeam(teamName);
+            team = board.registerNewTeam(teamName);
+            // Set team colour so players see the right colour in tab list, name tags, etc.
+            team.setColor(switch (teamName) {
+                case "Red" -> org.bukkit.ChatColor.RED;
+                case "Blue" -> org.bukkit.ChatColor.BLUE;
+                case "Spectator" -> org.bukkit.ChatColor.GRAY;
+                default -> org.bukkit.ChatColor.WHITE;
+            });
+            return team;
         }
 
         @Override
@@ -773,6 +929,12 @@ public class BukkitMinecraftManager implements MinecraftManager, AutoCloseable {
                 Team team = board.getTeam(teamName);
                 if (team == null) {
                     team = board.registerNewTeam(teamName);
+                    team.setColor(switch (teamName) {
+                        case "Red" -> org.bukkit.ChatColor.RED;
+                        case "Blue" -> org.bukkit.ChatColor.BLUE;
+                        case "Spectator" -> org.bukkit.ChatColor.GRAY;
+                        default -> org.bukkit.ChatColor.WHITE;
+                    });
                 }
                 Player player = Bukkit.getPlayer(playerName);
                 if (player != null) {
@@ -803,6 +965,28 @@ public class BukkitMinecraftManager implements MinecraftManager, AutoCloseable {
         @Override
         public Scoreboard getMainScoreboard() {
             return Bukkit.getScoreboardManager().getMainScoreboard();
+        }
+
+        @Override
+        public Objective registerSidebarObjective(String name, String displayName) {
+            Scoreboard board = getMainScoreboard();
+            Objective objective = board.getObjective(name);
+            if (objective == null) {
+                objective = board.registerNewObjective(name, "dummy", displayName);
+            } else {
+                objective.setDisplayName(displayName);
+            }
+            objective.setDisplaySlot(DisplaySlot.SIDEBAR);
+            return objective;
+        }
+
+        @Override
+        public void unregisterObjective(String name) {
+            Scoreboard board = getMainScoreboard();
+            Objective objective = board.getObjective(name);
+            if (objective != null) {
+                objective.unregister();
+            }
         }
     }
 

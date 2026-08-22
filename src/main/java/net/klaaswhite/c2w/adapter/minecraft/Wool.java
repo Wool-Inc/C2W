@@ -2,11 +2,14 @@ package net.klaaswhite.c2w.adapter.minecraft;
 
 import net.klaaswhite.c2w.domain.events.WoolCapturedEvent;
 import net.klaaswhite.c2w.domain.events.WoolDroppedEvent;
+import net.klaaswhite.c2w.domain.events.WoolPickedUpEvent;
 import net.klaaswhite.c2w.domain.model.*;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.UUID;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Per-wool state machine: pickup, carry, capture, drop-on-death.
@@ -33,7 +36,6 @@ public class Wool implements net.klaaswhite.c2w.domain.model.Wool {
     private final WoolColor color;
     private final BlockPos spawnPos;
     private final String worldName;
-    private final String capMarkerName;
     private final BossBar bossBar;
     private final net.klaaswhite.c2w.domain.game.WoolTimer woolTimer;
 
@@ -47,13 +49,15 @@ public class Wool implements net.klaaswhite.c2w.domain.model.Wool {
     private boolean blockPlaced = false; // ponytail: volatile-free, accessed only on Bukkit main thread
     private java.util.UUID droppedItemId = null; // tracked so we can remove the dropped Item on pickup/close
 
-    public Wool(MinecraftManager mc, net.klaaswhite.c2w.domain.game.WoolTimer woolTimer, WoolColor color, BlockPos spawnPos, String worldName, String capMarkerName) {
+    /** Returns the UUID of the dropped item entity, or null if not placed. */
+    public @Nullable UUID getDroppedItemId() { return droppedItemId; }
+
+    public Wool(MinecraftManager mc, net.klaaswhite.c2w.domain.game.WoolTimer woolTimer, WoolColor color, BlockPos spawnPos, String worldName) {
         this.mc = mc;
         this.woolTimer = woolTimer;
         this.color = color;
         this.spawnPos = spawnPos;
         this.worldName = worldName;
-        this.capMarkerName = capMarkerName;
         this.bossBar = mc.bossBars().createBossBar(color.name() + " capture", color, BossBarStyle.SOLID);
         this.bossBar.setVisible(false);
     }
@@ -63,7 +67,6 @@ public class Wool implements net.klaaswhite.c2w.domain.model.Wool {
     public WoolColor getColor() { return color; }
     public BlockPos getSpawnPos() { return spawnPos; }
     public String getWorldName() { return worldName; }
-    public String getCapMarkerName() { return capMarkerName; }
     public ManagedPlayer getCarrier() { return carrier.get(); }
     public boolean isCarried() { return carrier.get() != null; }
     public boolean isCapped() { return blockPlaced; }
@@ -95,6 +98,7 @@ public class Wool implements net.klaaswhite.c2w.domain.model.Wool {
         mc.players().sendActionBar(playerName, "§aYou picked up §e" + color.name() + "§a wool!");
         mc.players().playSound(playerName, "ENTITY_ITEM_PICKUP", 1.0f, 1.0f);
         mc.players().spawnParticles(playerName, worldName, spawnPos.x(), spawnPos.y(), spawnPos.z(), "REDSTONE", 20, 255, 255, 255);
+        mc.pushEvent(new WoolPickedUpEvent(this));
         return true;
     }
 

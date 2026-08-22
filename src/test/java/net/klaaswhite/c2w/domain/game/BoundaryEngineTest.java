@@ -80,7 +80,7 @@ class BoundaryEngineTest {
             public Object scheduleRepeating(Runnable task, long delay, long interval) { return null; }
             public void cancel(Object taskId) {}
         });
-        return new Wool(mc, woolTimer, color, new BlockPos(0, 64, 0), "game", "cap-" + color.name().toLowerCase());
+        return new Wool(mc, woolTimer, color, new BlockPos(0, 64, 0), "game");
     }
 
     @BeforeEach
@@ -211,8 +211,8 @@ class BoundaryEngineTest {
     }
 
     @Test
-    @DisplayName("exiting pit with wool unregisters it from timer")
-    void pitExitWithWoolUnregisters() {
+    @DisplayName("exiting pit keeps wool registered but stops capping (so progress can decay)")
+    void pitExitWithWoolKeepsRegisteredStopsCapping() {
         engine.addPitBox(new DomainBoundingBox(0, 0, 0, 10, 10, 10));
         var player = createPlayer("Alice");
         player.setTeam(new ManagedTeam("Red", TeamColor.RED));
@@ -222,11 +222,12 @@ class BoundaryEngineTest {
         // Enter
         engine.onPlayerMove(-1, 5, 5, 5, 5, 5, player);
         assertTrue(timer.registered.contains(wool));
+        assertTrue(wool.isCapping());
 
         // Exit
         engine.onPlayerMove(5, 5, 5, -1, 5, 5, player);
-        assertTrue(timer.unregistered.contains(wool));
-        assertFalse(wool.isCapping());
+        assertFalse(timer.unregistered.contains(wool), "wool should stay registered after leaving pit");
+        assertFalse(wool.isCapping(), "wool should no longer be capping after leaving pit");
     }
 
     @Test
@@ -386,5 +387,55 @@ class BoundaryEngineTest {
 
         assertTrue(engine.isPlayerInPit(player));
         assertTrue(wool.isCapped(), "elevator should capture instantly");
+    }
+
+    // --- Player removal (death/disconnect) ---
+
+    @Test
+    @DisplayName("removing a player keeps its wool registered but stops capping")
+    void removePlayerKeepsWoolRegisteredStopsCapping() {
+        engine.addPitBox(new DomainBoundingBox(0, 0, 0, 10, 10, 10));
+        var player = createPlayer("Alice");
+        player.setTeam(new ManagedTeam("Red", TeamColor.RED));
+        var wool = createWool(WoolColor.RED);
+        wool.pickup(player);
+
+        engine.onPlayerMove(-1, 5, 5, 5, 5, 5, player);
+        assertTrue(timer.registered.contains(wool));
+
+        engine.removePlayer(player);
+        assertFalse(engine.isPlayerInPit(player));
+        assertFalse(timer.unregistered.contains(wool), "wool should stay registered after player removal");
+        assertFalse(wool.isCapping(), "wool should no longer be capping after player removal");
+    }
+
+    // --- Decay after leaving the pit ---
+
+    @Test
+    @DisplayName("after exiting pit, wool.tick() decreases capture progress (decay reachable)")
+    void decayAfterPitExit() {
+        engine.addPitBox(new DomainBoundingBox(0, 0, 0, 10, 10, 10));
+        var player = createPlayer("Alice");
+        player.setTeam(new ManagedTeam("Red", TeamColor.RED));
+        var wool = createWool(WoolColor.RED);
+        wool.pickup(player);
+
+        // Enter pit and build up some progress
+        engine.onPlayerMove(-1, 5, 5, 5, 5, 5, player);
+        wool.setCappingModifier(100);
+        for (int i = 0; i < 5; i++) wool.tick();
+        int progressBeforeExit = wool.getCappedAmount();
+        assertTrue(progressBeforeExit > 0, "progress should build up inside the pit");
+
+        // Exit the pit — capping stops, wool stays registered
+        engine.onPlayerMove(5, 5, 5, -1, 5, 5, player);
+        assertFalse(wool.isCapping());
+        assertFalse(timer.unregistered.contains(wool));
+
+        // tick() while outside must decay the progress
+        int beforeDecay = wool.getCappedAmount();
+        wool.tick();
+        assertTrue(wool.getCappedAmount() < beforeDecay,
+                "capture progress should decay after leaving the pit");
     }
 }

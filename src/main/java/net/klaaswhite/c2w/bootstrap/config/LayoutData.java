@@ -25,18 +25,18 @@ public class LayoutData {
         this.originZ = 0;
     }
 
-    public void addPlacement(String typeName, String id, int x, int y, int z) {
-        addPlacement(typeName, id, x, y, z, 0f);
+    public void addPlacement(String typeName, int x, int y, int z) {
+        addPlacement(typeName, x, y, z, 0f);
     }
 
-    public void addPlacement(String typeName, String id, int x, int y, int z, float yaw) {
-        placements.add(new LayoutPlacement(typeName, id, x, y, z, null, yaw));
+    public void addPlacement(String typeName, int x, int y, int z, float yaw) {
+        placements.add(new LayoutPlacement(typeName, x, y, z, null, yaw));
     }
 
     public void markSpawnTeam(int index, String team) {
         if (index < 0 || index >= placements.size()) return;
         var p = placements.get(index);
-        placements.set(index, new LayoutPlacement(p.typeName(), p.id(), p.x(), p.y(), p.z(), team, p.yaw()));
+        placements.set(index, new LayoutPlacement(p.typeName(), p.x(), p.y(), p.z(), team, p.yaw()));
     }
 
     public boolean removeNearest(int x, int y, int z, int maxDistance) {
@@ -96,7 +96,6 @@ public class LayoutData {
         for (LayoutPlacement p : placements) {
             java.util.Map<String, Object> map = new java.util.LinkedHashMap<>();
             map.put("type", p.typeName());
-            map.put("id", p.id());
             map.put("x", p.x());
             map.put("y", p.y());
             map.put("z", p.z());
@@ -126,11 +125,9 @@ public class LayoutData {
         for (Object obj : rawPlacements) {
             if (obj instanceof java.util.Map<?, ?> map) {
                 Object typeObj = map.get("type");
-                Object idObj = map.get("id");
-                // Skip malformed placements instead of producing a literal "null" type/id.
-                if (typeObj == null || idObj == null) continue;
+                // Skip malformed placements
+                if (typeObj == null) continue;
                 String type = String.valueOf(typeObj);
-                String id = String.valueOf(idObj);
                 Object xObj = map.get("x");
                 Object yObj = map.get("y");
                 Object zObj = map.get("z");
@@ -142,7 +139,7 @@ public class LayoutData {
                 String spawnTeam = spawnTeamObj != null ? String.valueOf(spawnTeamObj) : null;
                 float yaw = map.containsKey("yaw") && map.get("yaw") instanceof Number
                         ? ((Number) map.get("yaw")).floatValue() : 0f;
-                data.placements.add(new LayoutPlacement(type, id, px, py, pz, spawnTeam, yaw));
+                data.placements.add(new LayoutPlacement(type, px, py, pz, spawnTeam, yaw));
             }
         }
 

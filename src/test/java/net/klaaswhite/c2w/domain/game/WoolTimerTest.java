@@ -71,7 +71,7 @@ class WoolTimerTest {
 
     private Wool createWool(WoolColor color) {
         var mc = createMockMc();
-        return new Wool(mc, timer, color, new BlockPos(0, 64, 0), "game", "cap-" + color.name().toLowerCase());
+        return new Wool(mc, timer, color, new BlockPos(0, 64, 0), "game");
     }
 
     private ManagedPlayer createPlayer() {

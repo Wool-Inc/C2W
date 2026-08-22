@@ -29,6 +29,7 @@
                 <configuration>
                     <source>25</source>
                     <target>25</target>
+                    <encoding>${project.build.sourceEncoding}</encoding>
                 </configuration>
             </plugin>
             <plugin>

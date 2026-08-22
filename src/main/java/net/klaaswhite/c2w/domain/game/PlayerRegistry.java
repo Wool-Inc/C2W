@@ -10,6 +10,7 @@ import java.util.Collection;
 import java.util.Hashtable;
 import java.util.List;
 import java.util.UUID;
+import java.util.logging.Logger;
 
 /**
  * Pure-domain player registry. Handles player registration, lookup by
@@ -19,6 +20,8 @@ import java.util.UUID;
  * {@link PlayerHandle}. Fully testable via fakes.
  */
 public class PlayerRegistry {
+
+    private static final Logger log = Logger.getLogger("C2W");
 
     private final Hashtable<UUID, ManagedPlayer> playersByUUID;
     private final Hashtable<String, ManagedPlayer> playersByName;
@@ -42,12 +45,14 @@ public class PlayerRegistry {
         var existing = playersByUUID.get(handle.getUniqueId());
         if (existing != null) {
             playersByName.put(playerName, existing);
+            log.info("[PlayerRegistry.registerPlayer] " + playerName + " already exists by UUID, returning existing");
             return existing;
         }
 
         var mp = new ManagedPlayer(handle);
         playersByUUID.put(handle.getUniqueId(), mp);
         playersByName.put(playerName, mp);
+        log.info("[PlayerRegistry.registerPlayer] registered " + playerName + " (total: " + playersByName.size() + ")");
         return mp;
     }
 
@@ -58,7 +63,10 @@ public class PlayerRegistry {
     }
 
     public ManagedPlayer getPlayer(String name) {
-        return playersByName.get(name);
+        var mp = playersByName.get(name);
+        log.fine("[PlayerRegistry.getPlayer] name=" + name + " found=" + (mp != null)
+                + " total=" + playersByName.size() + " known=" + String.join(",", playersByName.keySet()));
+        return mp;
     }
 
     public int getPlayerCount() {
@@ -73,12 +81,18 @@ public class PlayerRegistry {
 
     public void addPlayersToTeam(String teamName, Iterable<String> playerNames) {
         var team = ManagedTeam.teams.get(teamName);
-        if (team == null) return;
+        if (team == null) {
+            log.warning("[PlayerRegistry.addPlayersToTeam] Team '" + teamName + "' not found in ManagedTeam.teams");
+            return;
+        }
 
         for (var name : playerNames) {
             var mp = playersByName.get(name);
             if (mp != null) {
+                log.info("[PlayerRegistry.addPlayersToTeam] Setting " + name + " -> " + teamName);
                 mp.setTeam(team);
+            } else {
+                log.warning("[PlayerRegistry.addPlayersToTeam] Player '" + name + "' not found in registry");
             }
         }
     }

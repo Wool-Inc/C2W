@@ -186,7 +186,15 @@ public class StructureCommand extends BaseCommand {
     }
 
     private List<String> gameMarkerNameSuggestions(CommandInput input) {
-        return new ArrayList<>(MarkerManager.MARKER_NAMES);
+        // Only expose the markers relevant to structure editing: wool, spawnpoint
+        // and boundary markers (capture markers are managed by the game, not here).
+        var suggestions = new ArrayList<String>();
+        suggestions.add("wool");
+        suggestions.add("spawnpoint");
+        for (String name : MarkerManager.MARKER_NAMES) {
+            if (name.startsWith("boundary-")) suggestions.add(name);
+        }
+        return suggestions;
     }
 
     private List<String> typeNameSuggestions(CommandInput input) {
@@ -760,7 +768,7 @@ public class StructureCommand extends BaseCommand {
         }
         if (input.strings.length < 3) {
             p.sendMessage("Usage: /structure marker place <name>");
-            p.sendMessage("§eMarker names: wool, cap-<color>, spawnpoint, boundary-woolcap-pit-<1|2>, boundary-woolcap-elevator-<1|2>");
+            p.sendMessage("§eMarker names: wool, spawnpoint, boundary-woolcap-pit-<1|2>, boundary-woolcap-elevator-<1|2>");
             return false;
         }
         return creationManager.placeGameMarker(p, input.strings[2]);
@@ -775,7 +783,7 @@ public class StructureCommand extends BaseCommand {
         }
         if (input.strings.length < 3) {
             p.sendMessage("Usage: /structure marker placehere <name>");
-            p.sendMessage("§eMarker names: wool, cap-<color>, spawnpoint, boundary-woolcap-pit-<1|2>, boundary-woolcap-elevator-<1|2>");
+            p.sendMessage("§eMarker names: wool, spawnpoint, boundary-woolcap-pit-<1|2>, boundary-woolcap-elevator-<1|2>");
             return false;
         }
         return creationManager.placeGameMarkerHere(p, input.strings[2]);

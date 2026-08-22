@@ -2,6 +2,7 @@ package net.klaaswhite.c2w.adapter.managers;
 
 import net.klaaswhite.c2w.adapter.minecraft.BossBar;
 import net.klaaswhite.c2w.adapter.minecraft.BossBars;
+import net.klaaswhite.c2w.adapter.minecraft.Blocks;
 import net.klaaswhite.c2w.adapter.minecraft.MarkerEntity;
 import net.klaaswhite.c2w.adapter.minecraft.Markers;
 import net.klaaswhite.c2w.adapter.minecraft.MinecraftManager;
@@ -39,11 +40,14 @@ import org.bukkit.plugin.java.JavaPlugin;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 import java.io.File;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -52,6 +56,7 @@ import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -77,6 +82,7 @@ class GameManagerTest {
     private Plugin mcPlugin;
     private Markers markers;
     private Structures structures;
+    private Blocks blocks;
 
     private GameManager gameManager;
 
@@ -101,6 +107,7 @@ class GameManagerTest {
         mcPlugin = mock(Plugin.class);
         markers = mock(Markers.class);
         structures = mock(Structures.class);
+        blocks = mock(Blocks.class);
         when(mc.server()).thenReturn(server);
         when(mc.players()).thenReturn(players);
         when(mc.worlds()).thenReturn(worlds);
@@ -108,6 +115,7 @@ class GameManagerTest {
         when(mc.plugin()).thenReturn(mcPlugin);
         when(mc.markers()).thenReturn(markers);
         when(mc.structures()).thenReturn(structures);
+        when(mc.blocks()).thenReturn(blocks);
         when(bossBars.createBossBar(anyString(), any(), any())).thenReturn(bossBar);
         when(mcPlugin.getDataFolder()).thenReturn(new java.io.File("/fake-data"));
 
@@ -410,6 +418,169 @@ class GameManagerTest {
         assertTrue(gameManager.isGameInProgress());
     }
 
+    @Test
+    @DisplayName("start routes players to their team's spawnpoint marker")
+    void start_routesPlayersToTeamSpawnpoint() {
+        var input = new CommandInput();
+        var player = mock(Player.class);
+        input.commandSender = player;
+
+        // --- init phase ---
+        var draftWorld = mock(World.class);
+        when(draftWorld.getName()).thenReturn("c2w_draft");
+        when(draftWorld.getSpawnLocation()).thenReturn(mock(Location.class));
+        when(worldManager.createDraftWorld()).thenReturn(draftWorld);
+
+        gameManager.init(input);
+        assertTrue(gameManager.isDraftCreated());
+
+        // --- start phase setup ---
+        when(worldManager.isGameWorldCreated()).thenReturn(false);
+
+        // A SPAWN cell for the Red team.
+        var cell = LayoutCell.spawn(0, 0, "SPAWN", new BlockPos(0, 64, 0), "Red");
+        var layout = new MapLayout("arena", 32, 32, 32,
+                new BlockPos(0, 64, 0), List.of(cell));
+        when(layoutManager.getLayoutNames()).thenReturn(List.of("arena"));
+        when(layoutManager.getLayout("arena")).thenReturn(layout);
+
+        var gameWorld = mock(World.class);
+        when(gameWorld.getName()).thenReturn("c2w_game");
+        when(worldManager.createGameWorld()).thenReturn(gameWorld);
+
+        when(structureManager.hasType("SPAWN")).thenReturn(true);
+
+        var placedStructure = mock(StructureData.class);
+        // placeSpawnMarkers uses getWidth/getHeight/getDepth for search margin.
+        when(placedStructure.getWidth()).thenReturn(11);
+        when(placedStructure.getHeight()).thenReturn(1);
+        when(placedStructure.getDepth()).thenReturn(11);
+        when(structureManager.placeRandom(eq("SPAWN"), eq("c2w_game"), any(BlockPos.class), any(StructureRotation.class)))
+                .thenReturn(placedStructure);
+
+        var managedDraftWorld = mock(ManagedWorld.class);
+        when(managedDraftWorld.getName()).thenReturn("c2w_draft");
+        when(worldManager.getDraftWorld()).thenReturn(managedDraftWorld);
+
+        var managedGameWorld = mock(ManagedWorld.class);
+        when(managedGameWorld.getName()).thenReturn("c2w_game");
+        when(managedGameWorld.getSpawnPos()).thenReturn(new BlockPos(0, 65, 0));
+        when(worldManager.getGameWorld()).thenReturn(managedGameWorld);
+
+        // A spawnpoint marker at (10,64,0) in the game world.
+        var markerEntity = mock(MarkerEntity.class);
+        when(markerEntity.getPosition()).thenReturn(new BlockPos(10, 64, 0));
+        when(markers.getMarkerKey()).thenReturn("map_marker");
+        when(markerEntity.getPersistentData("map_marker")).thenReturn("spawnpoint");
+        when(markers.getMarkersInWorld("c2w_game")).thenReturn(List.of(markerEntity));
+
+        // Player teleport loop — one Red player to move from draft.
+        when(server.getOnlinePlayerNames()).thenReturn(List.of("TestPlayer"));
+        when(players.getWorldName("TestPlayer")).thenReturn("c2w_draft");
+
+        var redTeam = new ManagedTeam("Red", TeamColor.RED);
+        var managedPlayer = mock(ManagedPlayer.class);
+        when(managedPlayer.getTeam()).thenReturn(redTeam);
+        when(playerManager.getPlayer("TestPlayer")).thenReturn(managedPlayer);
+
+        // --- act ---
+        gameManager.start(input, "arena");
+
+        // --- verify: player teleported to (10,64,0) — marker Y (no +1) ---
+        verify(players).teleportToWorld(eq("TestPlayer"), eq(new BlockPos(10, 64, 0)), eq("c2w_game"));
+        verify(players).setGameMode(eq("TestPlayer"), eq("SURVIVAL"));
+        assertTrue(gameManager.isGameInProgress());
+    }
+
+    // ---------------------------------------------------------------
+    // Placement corner (placements-based layouts)
+    // ---------------------------------------------------------------
+
+    /**
+     * Starts a placements-based game with one cell per yaw (all sharing the
+     * same centre) and returns the exact corner {@code BlockPos} that was
+     * handed to {@code structureManager.placeRandom(...)} for each cell, in
+     * cell order.
+     */
+    private List<BlockPos> cornersForPlacements(int[] dims, float... yaws) {
+        var input = new CommandInput();
+        var player = mock(Player.class);
+        input.commandSender = player;
+
+        var draftWorld = mock(World.class);
+        when(draftWorld.getName()).thenReturn("c2w_draft");
+        when(draftWorld.getSpawnLocation()).thenReturn(mock(Location.class));
+        when(worldManager.createDraftWorld()).thenReturn(draftWorld);
+        gameManager.init(input);
+
+        when(worldManager.isGameWorldCreated()).thenReturn(false);
+
+        List<LayoutCell> cells = new ArrayList<>();
+        for (int r = 0; r < yaws.length; r++) {
+            cells.add(LayoutCell.of(r, 0, "dungeon", new BlockPos(0, 64, 0), yaws[r]));
+        }
+        var layout = new MapLayout("arena", 32, 32, 32,
+                new BlockPos(0, 64, 0), cells, true);
+        when(layoutManager.getLayoutNames()).thenReturn(List.of("arena"));
+        when(layoutManager.getLayout("arena")).thenReturn(layout);
+
+        var gameWorld = mock(World.class);
+        when(gameWorld.getName()).thenReturn("c2w_game");
+        when(worldManager.createGameWorld()).thenReturn(gameWorld);
+        when(structureManager.hasType("dungeon")).thenReturn(true);
+        when(structureTypeConfig.getDimensions("dungeon")).thenReturn(dims);
+
+        when(structureManager.placeRandom(eq("dungeon"), eq("c2w_game"),
+                any(BlockPos.class), any(StructureRotation.class)))
+                .thenReturn(mock(StructureData.class));
+
+        var managedDraftWorld = mock(ManagedWorld.class);
+        when(managedDraftWorld.getName()).thenReturn("c2w_draft");
+        when(worldManager.getDraftWorld()).thenReturn(managedDraftWorld);
+
+        var managedGameWorld = mock(ManagedWorld.class);
+        when(managedGameWorld.getName()).thenReturn("c2w_game");
+        when(managedGameWorld.getSpawnPos()).thenReturn(new BlockPos(0, 65, 0));
+        when(worldManager.getGameWorld()).thenReturn(managedGameWorld);
+
+        when(server.getOnlinePlayerNames()).thenReturn(List.of());
+        when(markers.findMarkersInWorld(anyString(), anyString(), any())).thenReturn(List.of());
+
+        gameManager.start(input, "arena");
+
+        ArgumentCaptor<BlockPos> captor = ArgumentCaptor.forClass(BlockPos.class);
+        verify(structureManager, times(yaws.length)).placeRandom(eq("dungeon"), eq("c2w_game"),
+                captor.capture(), any(StructureRotation.class));
+        return captor.getAllValues();
+    }
+
+    @Test
+    @DisplayName("odd-dimension cells: rotated corners keep the structure centred")
+    void placementsCorner_oddDimsAreCentred() {
+        int[] dims = {13, 13, 13};
+        // hw = 13/2 = 6 → corner = centre ∓ 6 in each axis for every rotation.
+        var corners = cornersForPlacements(dims, 0f, 90f, 180f, 270f);
+        assertEquals(new BlockPos(-6, 64, -6), corners.get(0));   // NONE (south)
+        assertEquals(new BlockPos(6, 64, -6), corners.get(1));    // west
+        assertEquals(new BlockPos(6, 64, 6), corners.get(2));     // north
+        assertEquals(new BlockPos(-6, 64, 6), corners.get(3));    // east
+    }
+
+    @Test
+    @DisplayName("even-dimension placements: rotated cells are not shifted one block sideways")
+    void placementsCorner_evenDimsAreMirrored() {
+        int[] dims = {12, 12, 12};
+        // hw = 12/2 = 6 → unrotated corner (-6,64,-6), footprint [-6,5] × [-6,5].
+        // Rotated structures must reuse that exact footprint, so their corner
+        // is the mirror ((w-1)-hw = 5), NOT +hw = 6 which would push them one
+        // block toward +X/+Z.
+        var corners = cornersForPlacements(dims, 0f, 90f, 180f, 270f);
+        assertEquals(new BlockPos(-6, 64, -6), corners.get(0));   // NONE (south)
+        assertEquals(new BlockPos(5, 64, -6), corners.get(1));    // west
+        assertEquals(new BlockPos(5, 64, 5), corners.get(2));     // north
+        assertEquals(new BlockPos(-6, 64, 5), corners.get(3));    // east
+    }
+
     // ---------------------------------------------------------------
     // preview()
     // ---------------------------------------------------------------
@@ -531,10 +702,12 @@ class GameManagerTest {
         gameManager.woolCapped(new WoolCapturedEvent(managedPlayer, wool));
         assertFalse(gameManager.isGameEnded());
         assertTrue(gameManager.isNotStarted()); // still NOT_STARTED (GSM doesn't change state on first cap)
+        verify(eventManager, never()).pushInternalEvent(any(EndGameEvent.class));
 
-        // Second cap — triggers GAME_ENDED
+        // Second cap — triggers GAME_ENDED and the real end-of-game flow
         gameManager.woolCapped(new WoolCapturedEvent(managedPlayer, wool));
         assertTrue(gameManager.isGameEnded());
+        verify(eventManager).pushInternalEvent(any(EndGameEvent.class));
     }
 
     // ---------------------------------------------------------------

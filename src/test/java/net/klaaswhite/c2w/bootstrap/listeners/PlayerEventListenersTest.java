@@ -2,6 +2,7 @@ package net.klaaswhite.c2w.bootstrap.listeners;
 
 import net.klaaswhite.c2w.adapter.managers.EventManager;
 import org.bukkit.event.entity.PlayerDeathEvent;
+import org.bukkit.event.player.PlayerChangedWorldEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
 import org.junit.jupiter.api.BeforeEach;
@@ -30,6 +31,13 @@ class PlayerEventListenersTest {
     @DisplayName("onPlayerJoin pushes the event")
     void joinPushesEvent(@Mock PlayerJoinEvent event) {
         listeners.onPlayerJoin(event);
+        verify(eventManager).pushMinecraftEvent(event);
+    }
+
+    @Test
+    @DisplayName("onPlayerChangedWorld pushes the event")
+    void changedWorldPushesEvent(@Mock PlayerChangedWorldEvent event) {
+        listeners.onPlayerChangedWorld(event);
         verify(eventManager).pushMinecraftEvent(event);
     }
 

@@ -61,7 +61,7 @@ class WoolTest {
         var mc = createMockMc();
         var pos = new BlockPos(0, 64, 0);
         var woolTimer = newWoolTimer();
-        return new Wool(mc, woolTimer, color, pos, "game", "cap-" + color.name().toLowerCase());
+        return new Wool(mc, woolTimer, color, pos, "game");
     }
 
     private ManagedPlayer createPlayer(String name) {
@@ -93,12 +93,11 @@ class WoolTest {
         var pos = new BlockPos(10, 20, 30);
         var mc = createMockMc();
         var woolTimer = newWoolTimer();
-        var wool = new Wool(mc, woolTimer, WoolColor.BLUE, pos, "game", "cap-blue");
+        var wool = new Wool(mc, woolTimer, WoolColor.BLUE, pos, "game");
 
         assertEquals(WoolColor.BLUE, wool.getColor());
         assertEquals(pos, wool.getSpawnPos());
         assertEquals("game", wool.getWorldName());
-        assertEquals("cap-blue", wool.getCapMarkerName());
     }
 
     // --- State: pickup ---
@@ -146,7 +145,7 @@ class WoolTest {
         when(mc.players()).thenReturn(mcPlayers);
         when(mc.server()).thenReturn(mcServer);
 
-        var wool = new Wool(mc, newWoolTimer(), WoolColor.RED, new BlockPos(0, 64, 0), "game", "cap-red");
+        var wool = new Wool(mc, newWoolTimer(), WoolColor.RED, new BlockPos(0, 64, 0), "game");
         var player = createPlayer("Alice");
 
         wool.pickup(player);
@@ -216,7 +215,7 @@ class WoolTest {
         var mcServer = mock(net.klaaswhite.c2w.adapter.minecraft.Server.class);
         when(mc.server()).thenReturn(mcServer);
 
-        var wool = new Wool(mc, newWoolTimer(), WoolColor.RED, new BlockPos(0, 64, 0), "game", "cap-red");
+        var wool = new Wool(mc, newWoolTimer(), WoolColor.RED, new BlockPos(0, 64, 0), "game");
         var player = createPlayer("Alice");
 
         wool.pickup(player);

@@ -103,8 +103,7 @@ public class LayoutEditorCommand extends BaseCommand {
 
     private CommandPiece buildSetSpawnTree() {
         var handler = new CommandPiece(null, this::setSpawn);
-        var teamNode = new ListChoiceCommandPiece(handler, null, List.of("red", "blue"));
-        return new CommandPiece(teamNode, null);
+        return new ListChoiceCommandPiece(handler, null, List.of("red", "blue"));
     }
 
     private List<String> typeNameSuggestions(CommandInput input) {
@@ -236,7 +235,7 @@ public class LayoutEditorCommand extends BaseCommand {
                 for (int i = 0; i < placements.size(); i++) {
                     LayoutPlacement p2 = placements.get(i);
                     String spawn = p2.spawnTeam() != null ? " [" + p2.spawnTeam() + " spawn]" : "";
-                    p.sendMessage("  " + i + ": " + p2.typeName() + "/" + p2.id()
+                    p.sendMessage("  " + i + ": " + p2.typeName()
                             + " at (" + p2.x() + "," + p2.y() + "," + p2.z() + ")" + spawn);
                 }
             }
@@ -251,23 +250,21 @@ public class LayoutEditorCommand extends BaseCommand {
             p.sendMessage("This command can only be used in a layout editor world.");
             return false;
         }
-        if (input.strings.length < 3) {
-            p.sendMessage("Usage: /layout setspawn <index> <red|blue>");
+        if (input.strings.length < 2) {
+            p.sendMessage("Usage: /layout setspawn <red|blue>");
             return false;
         }
-        int index;
-        try {
-            index = Integer.parseInt(input.strings[1]);
-        } catch (NumberFormatException e) {
-            p.sendMessage("Invalid index: " + input.strings[1]);
-            return false;
-        }
-        String team = input.strings[2];
-        if (!team.equalsIgnoreCase("red") && !team.equalsIgnoreCase("blue")) {
-            p.sendMessage("Team must be 'red' or 'blue'.");
-            return false;
-        }
-        layoutEditorManager.setSpawnTeam(p, index, team);
+        String team = input.strings[1];
+        String capitalizedTeam = switch (team.toLowerCase()) {
+            case "red" -> "Red";
+            case "blue" -> "Blue";
+            default -> {
+                p.sendMessage("Team must be 'red' or 'blue'.");
+                yield null;
+            }
+        };
+        if (capitalizedTeam == null) return false;
+        layoutEditorManager.setSpawnTeam(p, capitalizedTeam);
         return true;
     }
 

@@ -256,7 +256,7 @@ class LayoutEditorManagerTest {
         when(structureManager.hasType("dungeon")).thenReturn(true);
 
         manager.placeStructure(player, "dungeon");
-        verify(player).sendMessage(contains("Placed dungeon/"));
+        verify(player).sendMessage(contains("Placed dungeon at"));
     }
 
     // ---------------------------------------------------------------

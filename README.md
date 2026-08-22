@@ -34,7 +34,7 @@ flowchart LR
 
 1. **Define structure types** — `/structure define <name> <width> <height> <depth>`
 2. **Build structures** — `/structure create <type> <id>` opens a void world. Build inside the particle boundary, then `/structure save`.
-3. **Place markers** — Use `/marker create` to set wool spawns (`wool-red`, `wool-green`, `wool-blue`, `wool-yellow`), capture points (`cap-red`, etc.), and boundary boxes for pits and elevators.
+3. **Place markers** — Use `/marker create` to set wool spawns (`wool`, colors assigned by order at game start), and boundary boxes for pits and elevators.
 4. **Configure a layout** — Add a layout to `plugins/c2w/config.yml` that references your structure types and marker positions.
 5. **Launch a game** — `/c2w init` → `/c2w start <layout-name>`
 
@@ -355,12 +355,11 @@ The plugin uses Bukkit `Marker` entities with persistent data tag `map_marker` t
 
 | Name pattern | Purpose |
 | --- | --- |
-| `wool-<color>` | Where each wool spawns (`wool-red`, `wool-green`, `wool-blue`, `wool-yellow`) |
-| `cap-<color>` | Where each wool is captured (`cap-red`, ...) — same color as its wool |
+| `wool` | Generic wool spawn point (colors assigned by order at game start) |
 | `boundary-woolcap-pit-1` / `-2` | Two corners of the capture pit (forms a bounding box) |
 | `boundary-woolcap-elevator-1` / `-2` | Two corners of the elevator (capture zone) |
 
-The wool color is derived from the marker name: `wool-red` -> `RED_WOOL`, `wool-green` -> `GREEN_WOOL`, etc. The matching cap point is discovered in the same world as `cap-<color>`.
+The wool color is derived from marker order: the first `wool` marker becomes `RED`, the second `GREEN`, then `BLUE`, then `YELLOW`. There is no `cap-<color>` marker — capped wools are shown on the sidebar scoreboard rather than placed as blocks in the world.
 
 ### Structure markers
 
@@ -538,7 +537,7 @@ While a player is in the capture pit (the box defined by `boundary-woolcap-pit-1
 - The capture progress increases by `baseCapture + (increasePerPlayer * allies) - (decreasePerPlayer * enemies)` per tick.
 - If the player's team has fewer allies in the pit than enemies, the modifier is forced to 0.
 - Walking out of the pit decreases progress at a fixed rate.
-- When the bar reaches the cap, the wool is captured, the helmet is removed, a `WoolCapturedEvent` fires, and the cap marker location gets a block of the matching wool color.
+- When the bar reaches the cap, the wool is captured, the helmet is removed, a `WoolCapturedEvent` fires, and the wool is shown as captured on the sidebar scoreboard.
 
 When a player walks into the elevator (the box defined by `boundary-woolcap-elevator-1` and `-2`), the wool is captured immediately.
 

@@ -64,10 +64,9 @@ public class MarkerCommand extends BaseCommand {
             s.sendMessage("§cUsage: /marker create <player|looking> <marker-name>");
             s.sendMessage("§eExamples:");
             s.sendMessage("  §7/marker create looking wool §f- Create wool spawn marker (colors assigned on game start)");
-            s.sendMessage("  §7/marker create looking cap-red §f- Create capture point marker");
             s.sendMessage("  §7/marker create looking spawnpoint §f- Create generic spawn point (team determined by layout)");
             s.sendMessage("  §7/marker create looking boundary-woolcap-pit-1 §f- Create pit boundary");
-            s.sendMessage("§eMarker names: wool, cap-<color>, spawnpoint, boundary-woolcap-pit-<1|2>, boundary-woolcap-elevator-<1|2>");
+            s.sendMessage("§eMarker names: wool, spawnpoint, boundary-woolcap-pit-<1|2>, boundary-woolcap-elevator-<1|2>");
             return false;
         }
 
@@ -102,7 +101,7 @@ public class MarkerCommand extends BaseCommand {
         s.sendMessage("§eMarkers in this world (" + markers.size() + "):");
         if (markers.isEmpty()) {
             s.sendMessage("  §7No markers found. Use §f/marker create looking <name> §7to create one.");
-            s.sendMessage("§eMarker types: wool, cap-<color>, spawnpoint, boundary-woolcap-pit-<1|2>, boundary-woolcap-elevator-<1|2>");
+            s.sendMessage("§eMarker types: wool, spawnpoint, boundary-woolcap-pit-<1|2>, boundary-woolcap-elevator-<1|2>");
         } else {
             for (String marker : markers) {
                 s.sendMessage("  §7- §f" + marker);

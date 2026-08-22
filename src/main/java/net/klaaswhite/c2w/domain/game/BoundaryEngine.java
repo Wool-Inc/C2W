@@ -47,6 +47,10 @@ public class BoundaryEngine implements AutoCloseable {
         return !boundingBoxes.isEmpty();
     }
 
+    public int getBoxCount() {
+        return boundingBoxes.size();
+    }
+
     public boolean isPlayerInPit(ManagedPlayer player) {
         return playersInPit.contains(player);
     }
@@ -120,7 +124,9 @@ public class BoundaryEngine implements AutoCloseable {
         if (player.getCarry() instanceof Wool wool) {
             wool.setCapping(false);
             woolsInPit.remove(wool);
-            timer.unregisterWool(wool);
+            // Keep the wool registered with the timer so its capture progress
+            // decays back down while the carrier is outside the pit. It is
+            // unregistered only on capture/drop (onWoolCaptured/onWoolDropped).
         }
         recalcModifiers();
     }
@@ -134,6 +140,22 @@ public class BoundaryEngine implements AutoCloseable {
     }
 
     // --- Events ---
+
+    /**
+     * Called when a wool is picked up. If the player is already inside the
+     * capture pit, register the wool with the timer so capture progress can
+     * begin immediately without requiring the player to leave and re-enter.
+     */
+    public void onWoolPickedUp(Wool wool) {
+        var carrier = wool.getCarrier();
+        if (carrier == null) return;
+        if (playersInPit.contains(carrier)) {
+            woolsInPit.add(wool);
+            wool.setCapping(true);
+            timer.registerWool(wool);
+            recalcModifiers();
+        }
+    }
 
     public void onWoolDropped(Wool wool) {
         if (woolsInPit.remove(wool)) {
@@ -181,7 +203,8 @@ public class BoundaryEngine implements AutoCloseable {
         if (player.getCarry() instanceof Wool wool) {
             wool.setCapping(false);
             woolsInPit.remove(wool);
-            timer.unregisterWool(wool);
+            // Keep the wool registered so its progress decays back down while
+            // the carrier is gone (death/disconnect). Unregistered on drop/capture.
         }
         recalcModifiers();
     }
