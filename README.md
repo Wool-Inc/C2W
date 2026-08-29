@@ -73,7 +73,9 @@ Use these to define, build, and manage structures for your maps.
 | `/structure list` | Anywhere | Lists registered structure types and saved files |
 | `/structure delete <type> <id>` | Lobby | Permanently removes a structure NBT file |
 | `/structure resource world <type>` | Lobby | Opens a resource world to define chests/spawners |
-| `/structure resource mark <resourceId>` | Resource world | Marks the block you're looking at as a resource instance |
+| `/structure resource define <block\|container\|trial-spawner> <resourceId>` | Resource world | Defines a resource kind |
+| `/structure resource mark <resourceId>` | Resource world | Marks a block resource or container resource instance |
+| `/structure resource mark <resourceId> <eggs\|loot>` | Resource world | Marks the spawn-egg or loot source container for a trial resource |
 | `/structure resource place <resourceId>` | Build world | Tags a position inside a structure as a resource spot |
 
 ### Marker commands (`/marker`)
@@ -400,11 +402,23 @@ Resources (e.g. chests, spawners) are defined in "resource worlds" (`c2w_resourc
 
 1. `/structure resource world <type>` — opens a void world for resource definition.
 2. Place tile entities (chests, spawners, etc.) in the world.
-3. `/structure resource mark <resourceId>` — marks targeted tile entities with an auto-incrementing counter.
-4. `/structure save` — saves the resource world to `resources/<type>.nbt`.
-5. `/structure discard` — destroys without saving.
+3. `/structure resource define <block|container|trial-spawner> <resourceId>` — defines the resource kind.
+4. `/structure resource mark <resourceId>` — marks ordinary resource instances.
+5. `/structure resource mark <resourceId> eggs` and `... loot` — marks the two source containers for a trial-spawner resource.
+6. `/structure save` — saves the resource world to `resources/<type>.nbt`.
+7. `/structure discard` — destroys without saving.
 
 During structure transport, resources are placed at the marked positions within the structure instance.
+
+Trial-spawner resources use two structure markers in every saved instance:
+`trial-spawner-<resourceId>` must target a `TRIAL_SPAWNER`, and
+`trial-vault-<resourceId>` must target a `VAULT`. Once a trial has spawned mobs,
+the configured spawn-egg stacks are expanded into a shuffled, exact-count mob
+queue. Each player who kills at least one of those mobs can right-click its
+spawner after the cycle completes to receive one private `TRIAL_KEY` directly in
+their inventory. A player can then right-click the paired vault with that key to
+receive one random item from the configured loot source; each player can claim
+the vault once per cycle.
 
 ## Configuration
 

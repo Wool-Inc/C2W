@@ -461,14 +461,29 @@ public class GameManager implements AutoCloseable {
             //   block mode: List<CapturedBlock>  (Material + BlockData + tile entity state)
             //   container mode: List<ItemStack>
             Map<String, List<Object>> variantsByResourceId = new HashMap<>();
+            Map<String, List<ItemStack>> trialEggsByResourceId = new HashMap<>();
+            Map<String, List<ItemStack>> trialLootByResourceId = new HashMap<>();
             for (ManagedMarker m : mc.markers().findMarkersInWorld(refWorldName, "resourceinstance", null)) {
                 String val = m.getName();
                 if (val == null) continue;
                 String resourceId = val.replaceAll("-\\d+$", "");
+                String trialResourceId = resourceId;
+                int sourceSeparator = resourceId.indexOf(':');
+                String sourceKind = null;
+                if (sourceSeparator >= 0) {
+                    trialResourceId = resourceId.substring(0, sourceSeparator);
+                    sourceKind = resourceId.substring(sourceSeparator + 1);
+                }
                 String type = structureTypeConfig.getResourceType(typeName, resourceId);
                 BlockPos bp = m.getPosition();
 
-                if ("container".equals(type)) {
+                if ("trial-spawner".equals(structureTypeConfig.getResourceType(typeName, trialResourceId))) {
+                    if ("eggs".equals(sourceKind)) {
+                        readTrialSourceVariants(refWorldName, refWorld, bp, trialResourceId, trialEggsByResourceId);
+                    } else if ("loot".equals(sourceKind)) {
+                        readTrialSourceVariants(refWorldName, refWorld, bp, trialResourceId, trialLootByResourceId);
+                    }
+                } else if ("container".equals(type)) {
                     readContainerVariants(refWorldName, refWorld, bp, resourceId, variantsByResourceId);
                 } else {
                     readBlockVariant(refWorldName, refWorld, bp, resourceId, variantsByResourceId);
@@ -532,6 +547,8 @@ public class GameManager implements AutoCloseable {
                     }
                 }
             }
+            configureTrialSpawners(typeName, worldName, trialEggsByResourceId);
+            configureTrialVaults(typeName, worldName, trialLootByResourceId);
         } catch (IOException e) {
             mc.server().broadcastMessage("§eWarning: failed to place resources for " + typeName + ": " + e.getMessage());
         }
@@ -561,6 +578,46 @@ public class GameManager implements AutoCloseable {
         for (ItemStack item : container.getInventory().getContents()) {
             if (item != null && !item.getType().isAir()) {
                 list.add(item.clone());
+            }
+        }
+    }
+
+    private void readTrialSourceVariants(String refWorldName, World refWorld, BlockPos bp, String resourceId,
+                                         Map<String, List<ItemStack>> variantsByResourceId) {
+        Block block = refWorld.getBlockAt(bp.x(), bp.y(), bp.z());
+        if (!(block.getState() instanceof Container container)) return;
+        List<ItemStack> list = variantsByResourceId.computeIfAbsent(resourceId, k -> new ArrayList<>());
+        for (ItemStack item : container.getInventory().getContents()) {
+            if (item != null && !item.getType().isAir()) list.add(item.clone());
+        }
+    }
+
+    private void configureTrialSpawners(String typeName, String worldName,
+                                        Map<String, List<ItemStack>> eggsByResourceId) {
+        if (eggsByResourceId.isEmpty()) return;
+        for (MarkerEntity marker : mc.markers().getMarkersInWorld(worldName)) {
+            String name = marker.getName();
+            if (name == null || !name.startsWith("trial-spawner-")) continue;
+            String resourceId = name.substring("trial-spawner-".length());
+            if (!"trial-spawner".equals(structureTypeConfig.getResourceType(typeName, resourceId))) continue;
+            List<ItemStack> eggs = eggsByResourceId.get(resourceId);
+            if (eggs != null) {
+                mc.trialSpawners().configureSpawner(worldName, marker.getPosition(), eggs);
+            }
+        }
+    }
+
+    private void configureTrialVaults(String typeName, String worldName,
+                                      Map<String, List<ItemStack>> lootByResourceId) {
+        if (lootByResourceId.isEmpty()) return;
+        for (MarkerEntity marker : mc.markers().getMarkersInWorld(worldName)) {
+            String name = marker.getName();
+            if (name == null || !name.startsWith("trial-vault-")) continue;
+            String resourceId = name.substring("trial-vault-".length());
+            if (!"trial-spawner".equals(structureTypeConfig.getResourceType(typeName, resourceId))) continue;
+            List<ItemStack> loot = lootByResourceId.get(resourceId);
+            if (loot != null) {
+                mc.trialSpawners().configureVault(worldName, marker.getPosition(), loot);
             }
         }
     }

@@ -16,8 +16,9 @@ import org.bukkit.potion.PotionEffectType;
  * void worlds on MC 26.1+) cannot be time-pinned; time setting is skipped for
  * them but weather and cycle pinning still apply.
  * Runs a repeating heartbeat on the server thread (once per second). The world
- * gamerules {@code doDaylightCycle} and {@code doWeatherCycle} are disabled so the
- * pinned time/weather hold permanently instead of drifting between heartbeats.
+ * gamerules {@code doDaylightCycle}, {@code doWeatherCycle}, and
+ * {@code doMobSpawning} are disabled so the pinned time/weather hold permanently
+ * and mobs only appear through configured spawners.
  */
 public class EnvironmentManager implements AutoCloseable {
 
@@ -56,6 +57,7 @@ public class EnvironmentManager implements AutoCloseable {
             boolean isGameWorld = worldName.equals(gameWorldName);
             mc.worlds().setTime(worldName, isGameWorld ? MIDNIGHT : NOON);
             mc.worlds().setDoDaylightCycle(worldName, false);
+            mc.worlds().setDoMobSpawning(worldName, false);
             mc.worlds().setStorm(worldName, false);
             mc.worlds().setThundering(worldName, false);
             mc.worlds().setDoWeatherCycle(worldName, false);

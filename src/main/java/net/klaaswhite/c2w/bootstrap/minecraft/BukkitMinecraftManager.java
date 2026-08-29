@@ -24,13 +24,20 @@ import org.bukkit.WorldType;
 import org.bukkit.generator.ChunkGenerator;
 import org.bukkit.block.Block;
 import org.bukkit.block.TileState;
+import org.bukkit.block.TrialSpawner;
+import org.bukkit.block.Vault;
 import org.bukkit.block.data.BlockData;
+import org.bukkit.block.spawner.SpawnerEntry;
+import org.bukkit.block.spawner.SpawnRule;
 import org.bukkit.entity.ArmorStand;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.Marker;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.SpawnEggMeta;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
 import org.bukkit.scoreboard.DisplaySlot;
@@ -54,6 +61,7 @@ import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -68,6 +76,7 @@ public class BukkitMinecraftManager implements MinecraftManager, AutoCloseable {
 
     private final JavaPlugin plugin;
     private final NamespacedKey markerKey;
+    private final NamespacedKey trialEntityKey;
     private final Map<String, Structure> structureCache = new HashMap<>();
     private final AtomicLong structureIdCounter = new AtomicLong(0);
     /**
@@ -81,6 +90,9 @@ public class BukkitMinecraftManager implements MinecraftManager, AutoCloseable {
      * when the wool is dropped or captured.
      */
     private final Map<UUID, UUID> carriedWoolStandUuids = new HashMap<>();
+    private final Map<String, List<ItemStack>> trialSpawnEggs = new HashMap<>();
+    private final Map<String, BukkitTask> trialSpawnTasks = new HashMap<>();
+    private final Map<String, List<ItemStack>> trialVaultLoot = new HashMap<>();
     private net.klaaswhite.c2w.adapter.managers.EventManager eventManager; // ponytail: late-set, wired by App after both exist
 
     /**
@@ -96,6 +108,8 @@ public class BukkitMinecraftManager implements MinecraftManager, AutoCloseable {
             resolveGameRule("ADVANCE_TIME", "DO_DAYLIGHT_CYCLE");
     private static final GameRule<Boolean> WEATHER_CYCLE_RULE =
             resolveGameRule("ADVANCE_WEATHER", "DO_WEATHER_CYCLE");
+        private static final GameRule<Boolean> MOB_SPAWNING_RULE =
+            resolveGameRule("SPAWN_MOBS", "DO_MOB_SPAWNING");
 
     @SuppressWarnings("unchecked")
     private static @Nullable GameRule<Boolean> resolveGameRule(String... fieldNames) {
@@ -116,6 +130,7 @@ public class BukkitMinecraftManager implements MinecraftManager, AutoCloseable {
     public BukkitMinecraftManager(JavaPlugin plugin) {
         this.plugin = plugin;
         this.markerKey = new NamespacedKey(plugin, "map_marker");
+        this.trialEntityKey = new NamespacedKey(plugin, "trial_spawner_id");
     }
 
     public void setEventManager(net.klaaswhite.c2w.adapter.managers.EventManager eventManager) {
@@ -165,6 +180,11 @@ public class BukkitMinecraftManager implements MinecraftManager, AutoCloseable {
     @Override
     public Plugin plugin() {
         return new BukkitPlugin();
+    }
+
+    @Override
+    public TrialSpawners trialSpawners() {
+        return new BukkitTrialSpawners();
     }
 
     @Override
@@ -718,6 +738,14 @@ public class BukkitMinecraftManager implements MinecraftManager, AutoCloseable {
         }
 
         @Override
+        public void setDoMobSpawning(String worldName, boolean enabled) {
+            World world = Bukkit.getWorld(worldName);
+            if (world != null && MOB_SPAWNING_RULE != null) {
+                world.setGameRule(MOB_SPAWNING_RULE, enabled);
+            }
+        }
+
+        @Override
         public void setStorm(String worldName, boolean storm) {
             World world = Bukkit.getWorld(worldName);
             if (world != null) {
@@ -1204,6 +1232,172 @@ public class BukkitMinecraftManager implements MinecraftManager, AutoCloseable {
                 return Material.AIR.createBlockData();
             }
             return world.getBlockAt(pos.x(), pos.y(), pos.z()).getBlockData();
+        }
+    }
+
+    // =========================================================================
+    // BukkitTrialSpawners
+    // =========================================================================
+
+    private class BukkitTrialSpawners implements TrialSpawners {
+
+        @Override
+        public boolean isTrialSpawner(String worldName, BlockPos pos) {
+            World world = Bukkit.getWorld(worldName);
+            return world != null && world.getBlockAt(pos.x(), pos.y(), pos.z()).getType() == Material.TRIAL_SPAWNER;
+        }
+
+        @Override
+        public boolean isVault(String worldName, BlockPos pos) {
+            World world = Bukkit.getWorld(worldName);
+            return world != null && world.getBlockAt(pos.x(), pos.y(), pos.z()).getType() == Material.VAULT;
+        }
+
+        @Override
+        public void configureSpawner(String worldName, BlockPos pos, List<ItemStack> spawnEggs) {
+            World world = Bukkit.getWorld(worldName);
+            if (world == null) return;
+            Block block = world.getBlockAt(pos.x(), pos.y(), pos.z());
+            if (!(block.getState() instanceof TrialSpawner trialSpawner)) return;
+
+            List<SpawnerEntry> entries = new java.util.ArrayList<>();
+            int totalSpawns = 0;
+            SpawnRule defaultRule = new SpawnRule(0, 15, 0, 15);
+            for (ItemStack egg : spawnEggs) {
+                if (egg == null || egg.getType().isAir()
+                        || !(egg.getItemMeta() instanceof SpawnEggMeta eggMeta)) {
+                    plugin.getLogger().warning("[TrialSpawner] Ignoring non-spawn-egg source item at " + pos);
+                    continue;
+                }
+                var snapshot = eggMeta.getSpawnedEntity();
+                if (snapshot == null) {
+                    plugin.getLogger().warning("[TrialSpawner] Spawn egg has no entity snapshot at " + pos);
+                    continue;
+                }
+                int amount = Math.max(1, egg.getAmount());
+                entries.add(new SpawnerEntry(snapshot, amount, defaultRule.clone()));
+                totalSpawns += amount;
+            }
+            if (entries.isEmpty()) {
+                plugin.getLogger().warning("[TrialSpawner] No valid spawn eggs configured at " + pos);
+                return;
+            }
+
+            String key = locationKey(worldName, pos);
+            List<ItemStack> copiedEggs = new java.util.ArrayList<>();
+            for (ItemStack egg : spawnEggs) copiedEggs.add(egg.clone());
+            trialSpawnEggs.put(key, copiedEggs);
+
+            var configuration = trialSpawner.getNormalConfiguration();
+            configuration.setPotentialSpawns(entries);
+            configuration.setBaseSpawnsBeforeCooldown(1);
+            configuration.setAdditionalSpawnsBeforeCooldown(0);
+            configuration.setBaseSimultaneousEntities(1);
+            configuration.setAdditionalSimultaneousEntities(0);
+            trialSpawner.update(true, false);
+        }
+
+        @Override
+        public int startExactTrial(String worldName, BlockPos pos, String trialId) {
+            String key = locationKey(worldName, pos);
+            List<ItemStack> source = trialSpawnEggs.get(key);
+            World world = Bukkit.getWorld(worldName);
+            if (source == null || source.isEmpty() || world == null) return 0;
+
+            BukkitTask oldTask = trialSpawnTasks.remove(key);
+            if (oldTask != null) oldTask.cancel();
+
+            List<org.bukkit.entity.EntitySnapshot> queue = new java.util.ArrayList<>();
+            for (ItemStack egg : source) {
+                if (!(egg.getItemMeta() instanceof SpawnEggMeta eggMeta)) continue;
+                var snapshot = eggMeta.getSpawnedEntity();
+                if (snapshot == null) continue;
+                for (int i = 0; i < Math.max(1, egg.getAmount()); i++) queue.add(snapshot);
+            }
+            if (queue.isEmpty()) return 0;
+            java.util.Collections.shuffle(queue);
+
+            Location spawnLocation = world.getBlockAt(pos.x(), pos.y(), pos.z()).getLocation().add(0.5, 1, 0.5);
+            int queueSize = queue.size();
+            int[] index = {0};
+            BukkitTask[] task = new BukkitTask[1];
+            task[0] = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
+                if (index[0] >= queue.size()) {
+                    trialSpawnTasks.remove(key);
+                    task[0].cancel();
+                    return;
+                }
+                Entity entity = queue.get(index[0]++).createEntity(spawnLocation);
+                if (entity != null) tagEntity(entity, trialId);
+            }, 0L, 5L);
+            trialSpawnTasks.put(key, task[0]);
+            return queueSize;
+        }
+
+        @Override
+        public void configureVault(String worldName, BlockPos pos, List<ItemStack> loot) {
+            World world = Bukkit.getWorld(worldName);
+            if (world == null || loot.isEmpty()) return;
+            Block block = world.getBlockAt(pos.x(), pos.y(), pos.z());
+            if (!(block.getState() instanceof Vault vault)) return;
+
+            List<ItemStack> copiedLoot = new java.util.ArrayList<>();
+            for (ItemStack item : loot) {
+                if (item != null && !item.getType().isAir()) copiedLoot.add(item.clone());
+            }
+            if (copiedLoot.isEmpty()) return;
+            trialVaultLoot.put(locationKey(worldName, pos), copiedLoot);
+            vault.setKeyItem(new ItemStack(Material.TRIAL_KEY, 1));
+            vault.update(true, false);
+        }
+
+        @Override
+        public boolean claimVault(Player player, String worldName, BlockPos pos) {
+            List<ItemStack> loot = trialVaultLoot.get(locationKey(worldName, pos));
+            if (loot == null || loot.isEmpty()) return false;
+            ItemStack key = new ItemStack(Material.TRIAL_KEY, 1);
+            var inventory = player.getInventory();
+            if (!inventory.containsAtLeast(key, 1)) return false;
+
+            ItemStack reward = loot.get(ThreadLocalRandom.current().nextInt(loot.size())).clone();
+            var leftovers = inventory.addItem(reward);
+            if (!leftovers.isEmpty()) return false;
+            var removed = inventory.removeItem(key);
+            if (!removed.isEmpty()) {
+                inventory.removeItem(reward);
+                inventory.addItem(key);
+                return false;
+            }
+            return true;
+        }
+
+        @Override
+        public void clearConfiguredTrialData() {
+            for (BukkitTask task : trialSpawnTasks.values()) task.cancel();
+            trialSpawnTasks.clear();
+            trialSpawnEggs.clear();
+            trialVaultLoot.clear();
+        }
+
+        @Override
+        public void tagEntity(org.bukkit.entity.Entity entity, String trialId) {
+            entity.getPersistentDataContainer().set(trialEntityKey,
+                    PersistentDataType.STRING, trialId);
+        }
+
+        @Override
+        public @Nullable String getEntityTag(org.bukkit.entity.Entity entity) {
+            return entity.getPersistentDataContainer().get(trialEntityKey, PersistentDataType.STRING);
+        }
+
+        @Override
+        public boolean giveTrialKey(Player player) {
+            var leftovers = player.getInventory().addItem(new ItemStack(Material.TRIAL_KEY, 1));
+            return leftovers.isEmpty();
+        }
+
+        private String locationKey(String worldName, BlockPos pos) {
+            return worldName + "@" + pos.x() + "," + pos.y() + "," + pos.z();
         }
     }
 

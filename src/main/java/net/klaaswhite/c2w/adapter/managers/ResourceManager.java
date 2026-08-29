@@ -168,6 +168,11 @@ public class ResourceManager implements AutoCloseable {
             if ("block".equals(resourceType)) {
                 return markBlockResource(player, typeName, resourceId, worldName, target);
             }
+            if ("trial-spawner".equals(resourceType)) {
+                player.sendMessage("Trial resources need a source kind: use /structure resource mark "
+                        + resourceId + " eggs or loot.");
+                return false;
+            }
 
             // Undefined resource: default to block mode (multiple markers, count message).
             // Inferring the mode from the targeted block's type was wrong: a chest/barrel
@@ -176,6 +181,52 @@ public class ResourceManager implements AutoCloseable {
             // should be opted into explicitly via /structure resource define <container> ...
             return markBlockResource(player, typeName, resourceId, worldName, target);
         }
+
+    /** Mark one of the two source containers for a trial-spawner resource. */
+    public boolean markTrialSourceContainer(Player player, String typeName,
+                                            String resourceId, String sourceKind) {
+        String resourceType = structureTypeConfig.getResourceType(typeName, resourceId);
+        if (!"trial-spawner".equals(resourceType)) {
+            player.sendMessage("Resource '" + resourceId + "' is not a trial-spawner resource.");
+            return false;
+        }
+        if (!"eggs".equals(sourceKind) && !"loot".equals(sourceKind)) {
+            player.sendMessage("Trial source must be 'eggs' or 'loot'.");
+            return false;
+        }
+
+        String worldName = resourceWorldName(typeName);
+        if (!sessions.containsKey(worldName)) {
+            player.sendMessage("No active resource session. Use /structure resource world first.");
+            return false;
+        }
+        Block target = player.getTargetBlockExact(5);
+        if (target == null || !(target.getState() instanceof Container)) {
+            player.sendMessage("Look at a container block (chest, barrel, etc.) to mark it.");
+            return false;
+        }
+
+        String sourceId = trialSourceId(resourceId, sourceKind);
+        removeExistingContainerMarker(worldName, sourceId);
+        Marker marker = target.getWorld().spawn(
+                target.getLocation().add(0.5, 0, 0.5),
+                Marker.class, m -> {
+                    m.setPersistent(true);
+                    m.getPersistentDataContainer().set(resourceInstanceKey,
+                            PersistentDataType.STRING, sourceId);
+                });
+        if (marker == null) {
+            player.sendMessage("Failed to create resource marker.");
+            return false;
+        }
+        player.sendMessage("Marked " + sourceKind + " source for trial resource '"
+                + resourceId + "'.");
+        return true;
+    }
+
+    public static String trialSourceId(String resourceId, String sourceKind) {
+        return resourceId + ":" + sourceKind;
+    }
 
     /**
      * Mark a container block as a resource. The container's inventory contents
@@ -298,6 +349,12 @@ public class ResourceManager implements AutoCloseable {
 
         if (Bukkit.getWorld(worldName) != null) {
             try {
+                List<String> missingTrialSources = missingTrialSources(worldName, typeName);
+                if (!missingTrialSources.isEmpty()) {
+                    player.sendMessage("Cannot save — trial source containers are missing:");
+                    for (String source : missingTrialSources) player.sendMessage("  " + source);
+                    return false;
+                }
                 saveResourceNbt(worldName, typeName);
                 saveMinSpotsToConfig(worldName, typeName);
             } catch (Exception e) {
@@ -397,6 +454,16 @@ public class ResourceManager implements AutoCloseable {
             m.remove();
             count++;
         }
+        for (String sourceKind : List.of("eggs", "loot")) {
+            markers = mc.markers().findMarkersInWorld(worldName, "resourceinstance",
+                    trialSourceId(resourceId, sourceKind));
+            for (ManagedMarker m : markers) {
+                if (trialSourceId(resourceId, sourceKind).equals(m.getName())) {
+                    m.remove();
+                    count++;
+                }
+            }
+        }
         return count;
     }
 
@@ -452,6 +519,7 @@ public class ResourceManager implements AutoCloseable {
         for (ManagedMarker m : markers) {
             String val = m.getName();
             if (val == null) continue;
+            if (val.contains(":")) continue;
             int lastDash = val.lastIndexOf('-');
             if (lastDash < 0) {
                 // container mode: count non-empty inventory slots
@@ -473,6 +541,20 @@ public class ResourceManager implements AutoCloseable {
         if (!counts.isEmpty()) {
             structureTypeConfig.setResourceRequirements(typeName, counts);
         }
+    }
+
+    private List<String> missingTrialSources(String worldName, String typeName) {
+        List<String> missing = new ArrayList<>();
+        for (String resourceId : structureTypeConfig.getTrialResourceIds(typeName)) {
+            for (String sourceKind : List.of("eggs", "loot")) {
+                String sourceId = trialSourceId(resourceId, sourceKind);
+                List<ManagedMarker> markers = mc.markers().findMarkersInWorld(
+                        worldName, "resourceinstance", sourceId);
+                boolean found = markers.stream().anyMatch(marker -> sourceId.equals(marker.getName()));
+                if (!found) missing.add(resourceId + " (" + sourceKind + ")");
+            }
+        }
+        return missing;
     }
 
     private void saveResourceNbt(String worldName, String typeName) throws IOException {

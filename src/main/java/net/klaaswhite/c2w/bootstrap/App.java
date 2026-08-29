@@ -26,6 +26,7 @@ import net.klaaswhite.c2w.adapter.managers.ResourceManager;
 import net.klaaswhite.c2w.adapter.managers.ScoreboardManager;
 import net.klaaswhite.c2w.adapter.managers.StructureCreationManager;
 import net.klaaswhite.c2w.adapter.managers.TeamSelectionManager;
+import net.klaaswhite.c2w.adapter.managers.TrialSpawnerManager;
 import net.klaaswhite.c2w.domain.managers.StructureManager;
 import net.klaaswhite.c2w.adapter.managers.WorldManager;
 import net.klaaswhite.c2w.adapter.minecraft.MinecraftManager;
@@ -106,6 +107,8 @@ public class App implements AutoCloseable {
         this.managers.resourceManager = new ResourceManager(
                 plugin, this.managers.eventManager, this.managers.worldManager,
                 structureTypeConfig, dataFolder, mc);
+            this.managers.trialSpawnerManager = new TrialSpawnerManager(
+                this.managers.eventManager, mc, structureTypeConfig);
         this.managers.layoutEditorManager = new LayoutEditorManager(
                 plugin, this.managers.eventManager, this.managers.worldManager,
                 this.managers.structureManager, structureTypeConfig, mc, dataFolder);
@@ -158,6 +161,7 @@ public class App implements AutoCloseable {
         closeables.add(this.managers.layoutEditorManager);
         closeables.add(this.managers.structureCreationManager);
         closeables.add(this.managers.resourceManager);
+        closeables.add(this.managers.trialSpawnerManager);
         closeables.add(this.managers.gameManager);
         closeables.add(this.managers.scoreboardManager);
         closeables.add(this.managers.entityManager);
@@ -209,6 +213,7 @@ public class App implements AutoCloseable {
         this.managers.structureManager = null;
         this.managers.structureCreationManager = null;
         this.managers.resourceManager = null;
+        this.managers.trialSpawnerManager = null;
         this.managers.worldManager = null;
         this.managers.environmentManager = null;
         this.managers.gameManager = null;

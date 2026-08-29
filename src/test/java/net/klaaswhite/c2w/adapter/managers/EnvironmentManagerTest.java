@@ -96,6 +96,7 @@ class EnvironmentManagerTest {
 
         verify(worlds).setTime("c2w_lobby", EnvironmentManager.NOON);
         verify(worlds).setDoDaylightCycle("c2w_lobby", false);
+        verify(worlds).setDoMobSpawning("c2w_lobby", false);
         verify(worlds).setStorm("c2w_lobby", false);
         verify(worlds).setThundering("c2w_lobby", false);
         verify(worlds).setDoWeatherCycle("c2w_lobby", false);
@@ -110,6 +111,7 @@ class EnvironmentManagerTest {
 
         verify(worlds).setTime("c2w_game", EnvironmentManager.MIDNIGHT);
         verify(worlds).setDoDaylightCycle("c2w_game", false);
+        verify(worlds).setDoMobSpawning("c2w_game", false);
         verify(worlds).setStorm("c2w_game", false);
         verify(worlds).setThundering("c2w_game", false);
         verify(worlds).setDoWeatherCycle("c2w_game", false);

@@ -238,6 +238,31 @@ public class StructureCreationManager implements AutoCloseable {
             }
         }
 
+        var trialResources = structureTypeConfig.getTrialResourceIds(typeName);
+        if (!trialResources.isEmpty()) {
+            var gameMarkers = getGameMarkersGrouped(worldName);
+            var invalidTrials = new ArrayList<String>();
+            for (String resourceId : trialResources) {
+                String spawnerName = "trial-spawner-" + resourceId;
+                String vaultName = "trial-vault-" + resourceId;
+                var spawners = gameMarkers.getOrDefault(spawnerName, List.of());
+                var vaults = gameMarkers.getOrDefault(vaultName, List.of());
+                if (spawners.size() != 1 || vaults.size() != 1) {
+                    invalidTrials.add(resourceId + ": markers " + spawners.size() + "/" + vaults.size());
+                    continue;
+                }
+                if (!mc.trialSpawners().isTrialSpawner(worldName, spawners.get(0).getPosition())
+                        || !mc.trialSpawners().isVault(worldName, vaults.get(0).getPosition())) {
+                    invalidTrials.add(resourceId + ": markers must target TRIAL_SPAWNER and VAULT");
+                }
+            }
+            if (!invalidTrials.isEmpty()) {
+                player.sendMessage("Cannot save — trial-spawner marker requirements not met:");
+                for (String invalid : invalidTrials) player.sendMessage("  " + invalid);
+                return false;
+            }
+        }
+
         // Remove any visualization armor stands so they are not captured in the NBT.
         // Use the thorough sweep so stands loaded from a previous save (which are
         // not in the tracking map) are also removed. Entity.remove() is deferred to

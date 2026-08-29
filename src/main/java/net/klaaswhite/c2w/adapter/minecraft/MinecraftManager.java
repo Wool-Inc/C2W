@@ -51,6 +51,9 @@ public interface MinecraftManager extends net.klaaswhite.c2w.domain.ops.Minecraf
     /** Plugin access (JavaPlugin, data folder, logger). */
     Plugin plugin();
 
+    /** Trial-spawner and vault operations. */
+    TrialSpawners trialSpawners();
+
     /** Push a C2W internal event. */
     void pushEvent(C2WEvent event);
 
@@ -163,6 +166,9 @@ public interface MinecraftManager extends net.klaaswhite.c2w.domain.ops.Minecraf
 
         /** Toggle the daylight cycle game rule (whether time advances by itself). */
         void setDoDaylightCycle(String worldName, boolean enabled);
+
+        /** Toggle the natural mob spawning game rule. */
+        void setDoMobSpawning(String worldName, boolean enabled);
 
         /** Set whether it is currently raining (storming) in the world. */
         void setStorm(String worldName, boolean storm);

@@ -67,13 +67,41 @@ public class FolderStructureTypeConfig implements TypeDimensionSource {
         return result;
     }
 
-    /** Get the resource type ("block" or "container") for a resource, or null if not defined. */
+    /** Get every resource ID defined for a structure type, including trial resources. */
+    public List<String> getResourceIds(String typeName) {
+        File file = structureFile(typeName);
+        if (!file.exists()) return List.of();
+
+        YamlConfiguration yaml = YamlConfiguration.loadConfiguration(file);
+        var section = yaml.getConfigurationSection("resources");
+        if (section == null) return List.of();
+        return new ArrayList<>(section.getKeys(false));
+    }
+
+    /** Get all trial-spawner resource IDs defined for a structure type. */
+    public List<String> getTrialResourceIds(String typeName) {
+        return getResourceIds(typeName).stream()
+                .filter(resourceId -> "trial-spawner".equals(getResourceType(typeName, resourceId)))
+                .toList();
+    }
+
+    /** Get the resource type ("block", "container", or "trial-spawner"), or null if undefined. */
     public @Nullable String getResourceType(String typeName, String resourceId) {
         File file = structureFile(typeName);
         if (!file.exists()) return null;
         YamlConfiguration yaml = YamlConfiguration.loadConfiguration(file);
         String type = yaml.getString("resources." + resourceId + ".type");
         return (type == null || type.isEmpty()) ? null : type;
+    }
+
+    /** Get the configured spawn-egg source ID for a trial resource. */
+    public @Nullable String getTrialSpawnEggSource(String typeName, String resourceId) {
+        return getResourceField(typeName, resourceId, "spawn-eggs-source");
+    }
+
+    /** Get the configured loot source ID for a trial resource. */
+    public @Nullable String getTrialLootSource(String typeName, String resourceId) {
+        return getResourceField(typeName, resourceId, "loot-source");
     }
 
     public void saveType(String typeName, int width, int height, int depth) {
@@ -101,20 +129,45 @@ public class FolderStructureTypeConfig implements TypeDimensionSource {
     public void setResourceRequirements(String typeName, Map<String, Integer> requirements) {
         File file = structureFile(typeName);
         YamlConfiguration yaml = file.exists() ? YamlConfiguration.loadConfiguration(file) : new YamlConfiguration();
-        // capture existing resource types before clearing
+        // Capture existing resource definitions before clearing. Trial resources have
+        // no generic resource spots, so they must survive this minSpots rewrite.
         Map<String, String> existingTypes = new HashMap<>();
+        Map<String, String> existingEggSources = new HashMap<>();
+        Map<String, String> existingLootSources = new HashMap<>();
         var section = yaml.getConfigurationSection("resources");
         if (section != null) {
             for (String key : section.getKeys(false)) {
                 String type = section.getString(key + ".type");
                 if (type != null) existingTypes.put(key, type);
+                String eggs = section.getString(key + ".spawn-eggs-source");
+                if (eggs != null) existingEggSources.put(key, eggs);
+                String loot = section.getString(key + ".loot-source");
+                if (loot != null) existingLootSources.put(key, loot);
             }
         }
         yaml.set("resources", null);
         for (var entry : requirements.entrySet()) {
             yaml.set("resources." + entry.getKey() + ".minSpots", entry.getValue());
             String type = existingTypes.get(entry.getKey());
-            if (type != null) yaml.set("resources." + entry.getKey() + ".type", type);
+            if (type != null) {
+                yaml.set("resources." + entry.getKey() + ".type", type);
+                if ("trial-spawner".equals(type)) {
+                    String eggs = existingEggSources.get(entry.getKey());
+                    if (eggs != null) yaml.set("resources." + entry.getKey() + ".spawn-eggs-source", eggs);
+                    String loot = existingLootSources.get(entry.getKey());
+                    if (loot != null) yaml.set("resources." + entry.getKey() + ".loot-source", loot);
+                }
+            }
+        }
+        for (var entry : existingTypes.entrySet()) {
+            String resourceId = entry.getKey();
+            if (!"trial-spawner".equals(entry.getValue()) || requirements.containsKey(resourceId)) continue;
+            yaml.set("resources." + resourceId + ".minSpots", 0);
+            yaml.set("resources." + resourceId + ".type", entry.getValue());
+            String eggs = existingEggSources.get(resourceId);
+            if (eggs != null) yaml.set("resources." + resourceId + ".spawn-eggs-source", eggs);
+            String loot = existingLootSources.get(resourceId);
+            if (loot != null) yaml.set("resources." + resourceId + ".loot-source", loot);
         }
         try {
             file.getParentFile().mkdirs();
@@ -134,6 +187,23 @@ public class FolderStructureTypeConfig implements TypeDimensionSource {
             yaml.save(file);
         } catch (IOException e) {
             throw new RuntimeException("Failed to save resource requirement for type: " + typeName, e);
+        }
+    }
+
+    /** Define a trial-spawner resource with its two source container IDs. */
+    public void addTrialSpawnerResource(String typeName, String resourceId,
+                                         String spawnEggSource, String lootSource) {
+        File file = structureFile(typeName);
+        YamlConfiguration yaml = file.exists() ? YamlConfiguration.loadConfiguration(file) : new YamlConfiguration();
+        yaml.set("resources." + resourceId + ".minSpots", 0);
+        yaml.set("resources." + resourceId + ".type", "trial-spawner");
+        yaml.set("resources." + resourceId + ".spawn-eggs-source", spawnEggSource);
+        yaml.set("resources." + resourceId + ".loot-source", lootSource);
+        try {
+            file.getParentFile().mkdirs();
+            yaml.save(file);
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to save trial-spawner resource for type: " + typeName, e);
         }
     }
 
@@ -169,5 +239,13 @@ public class FolderStructureTypeConfig implements TypeDimensionSource {
 
     private File structureFile(String typeName) {
         return new File(structuresDir, typeName + "/structure.yml");
+    }
+
+    private @Nullable String getResourceField(String typeName, String resourceId, String field) {
+        File file = structureFile(typeName);
+        if (!file.exists()) return null;
+        YamlConfiguration yaml = YamlConfiguration.loadConfiguration(file);
+        String value = yaml.getString("resources." + resourceId + "." + field);
+        return value == null || value.isEmpty() ? null : value;
     }
 }

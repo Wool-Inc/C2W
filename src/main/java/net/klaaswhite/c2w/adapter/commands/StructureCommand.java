@@ -128,8 +128,9 @@ public class StructureCommand extends BaseCommand {
         resourceRoot.addChoice("placehere", placeHereWithId);
 
         var markHandler = new CommandPiece(null, this::markResource);
+        var markKind = new ListChoiceCommandPiece(markHandler, this::markResource, List.of("eggs", "loot"));
         resourceRoot.addChoice("mark", new DynamicListChoiceCommandPiece(
-                markHandler, null, this::resourceIdSuggestionsForContext));
+            markKind, this::markResource, this::resourceIdSuggestionsForContext));
 
         resourceRoot.addChoice("list", new CommandPiece(null, this::listResourceSpots));
 
@@ -146,8 +147,13 @@ public class StructureCommand extends BaseCommand {
         // define <block|container> <resourceId>
         var defineHandler = new CommandPiece(null, this::defineResource);
         var idChooser = new DynamicListChoiceCommandPiece(
-                defineHandler, null, this::resourceIdSuggestionsForContext);
-        var typeChooser = new ListChoiceCommandPiece(idChooser, null, List.of("block", "container"));
+            defineHandler, null, this::resourceIdSuggestionsForContext);
+        var trialIdChooser = new DynamicListChoiceCommandPiece(
+            defineHandler, null, this::resourceIdSuggestionsForContext);
+        var typeChooser = new TreeChoiceCommandPiece(null);
+        typeChooser.addChoice("block", idChooser);
+        typeChooser.addChoice("container", idChooser);
+        typeChooser.addChoice("trial-spawner", trialIdChooser);
         resourceRoot.addChoice("define", typeChooser);
 
         var clearHandler = new CommandPiece(null, this::clearResource);
@@ -194,6 +200,12 @@ public class StructureCommand extends BaseCommand {
         for (String name : MarkerManager.MARKER_NAMES) {
             if (name.startsWith("boundary-")) suggestions.add(name);
         }
+        for (String typeName : typeConfig.getTypeNames()) {
+            for (String resourceId : typeConfig.getTrialResourceIds(typeName)) {
+                suggestions.add("trial-spawner-" + resourceId);
+                suggestions.add("trial-vault-" + resourceId);
+            }
+        }
         return suggestions;
     }
 
@@ -221,8 +233,15 @@ public class StructureCommand extends BaseCommand {
         if (creationParts != null) typeName = creationParts[0];
         if (typeName == null) typeName = getResourceWorldType(p);
         if (typeName == null) return List.of();
-        // ponytail: resource IDs from structure.yml; mark any TileState in resource world
-        return new ArrayList<>(typeConfig.getResourceRequirements(typeName).keySet());
+        // Resource IDs include trial definitions, whose minSpots is intentionally zero.
+        var suggestions = new ArrayList<>(typeConfig.getResourceRequirements(typeName).keySet());
+        var allResourceIds = typeConfig.getResourceIds(typeName);
+        if (allResourceIds != null) {
+            for (String resourceId : allResourceIds) {
+                if (!suggestions.contains(resourceId)) suggestions.add(resourceId);
+            }
+        }
+        return suggestions;
     }
 
     private List<String> suggestNothing(CommandInput input) {
@@ -533,23 +552,30 @@ public class StructureCommand extends BaseCommand {
             return false;
         }
         if (input.strings.length < 4) {
-            p.sendMessage("Usage: /structure resource define <block|container> <resourceid>");
+            p.sendMessage("Usage: /structure resource define <block|container|trial-spawner> <resourceid>");
             return false;
         }
         String typeName = getResourceWorldType(p);
         if (typeName == null) return false;
         String resourceType = input.strings[2].toLowerCase();
-        if (!resourceType.equals("block") && !resourceType.equals("container")) {
-            p.sendMessage("Resource type must be 'block' or 'container'.");
+        if (!resourceType.equals("block") && !resourceType.equals("container")
+                && !resourceType.equals("trial-spawner")) {
+            p.sendMessage("Resource type must be 'block', 'container', or 'trial-spawner'.");
             return false;
         }
         String resourceId = input.strings[3];
         // Check for duplicate
-        if (typeConfig.getResourceRequirements(typeName).containsKey(resourceId)) {
+        if (typeConfig.getResourceIds(typeName).contains(resourceId)) {
             p.sendMessage("Resource '" + resourceId + "' is already defined for type '" + typeName + "'. Use /structure resource undefine " + resourceId + " to remove it first.");
             return false;
         }
-        typeConfig.addResourceRequirement(typeName, resourceId, 1, resourceType);
+        if ("trial-spawner".equals(resourceType)) {
+            typeConfig.addTrialSpawnerResource(typeName, resourceId,
+                    ResourceManager.trialSourceId(resourceId, "eggs"),
+                    ResourceManager.trialSourceId(resourceId, "loot"));
+        } else {
+            typeConfig.addResourceRequirement(typeName, resourceId, 1, resourceType);
+        }
         p.sendMessage("Defined " + resourceType + " resource '" + resourceId + "' for type '" + typeName + "'.");
         return true;
     }
@@ -563,12 +589,17 @@ public class StructureCommand extends BaseCommand {
         }
 
         if (input.strings.length < 3) {
-            p.sendMessage("Usage: /structure resource mark <resourceid>");
+            p.sendMessage("Usage: /structure resource mark <resourceid> [eggs|loot]");
             return false;
         }
         String typeName = getResourceWorldType(p);
         if (typeName == null) return false;
-        return resourceManager.markResourceBlock(p, typeName, input.strings[2]);
+        String resourceId = input.strings[2];
+        if (input.strings.length >= 4
+                && "trial-spawner".equals(typeConfig.getResourceType(typeName, resourceId))) {
+            return resourceManager.markTrialSourceContainer(p, typeName, resourceId, input.strings[3].toLowerCase());
+        }
+        return resourceManager.markResourceBlock(p, typeName, resourceId);
     }
 
     private boolean listResourceSpots(CommandInput input) {
@@ -664,8 +695,8 @@ public class StructureCommand extends BaseCommand {
         if (typeName == null) return false;
         String resourceId = input.strings[2];
 
-        var requirements = typeConfig.getResourceRequirements(typeName);
-        if (!requirements.containsKey(resourceId)) {
+        var resourceIds = typeConfig.getResourceIds(typeName);
+        if (!resourceIds.contains(resourceId)) {
             p.sendMessage("Resource '" + resourceId + "' is not defined for type '" + typeName + "'.");
             return false;
         }

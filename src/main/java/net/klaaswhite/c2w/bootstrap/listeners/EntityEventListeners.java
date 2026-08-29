@@ -7,6 +7,7 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDeathEvent;
 import org.bukkit.event.entity.EntityPickupItemEvent;
 import org.bukkit.event.entity.SpawnerSpawnEvent;
+import org.bukkit.event.entity.TrialSpawnerSpawnEvent;
 
 public class EntityEventListeners implements Listener {
     private final EventManager eventManager;
@@ -31,6 +32,11 @@ public class EntityEventListeners implements Listener {
 
     @EventHandler
     public void onEntitySpawn(SpawnerSpawnEvent event) {
+        this.eventManager.pushMinecraftEvent(event);
+    }
+
+    @EventHandler
+    public void onTrialSpawnerSpawn(TrialSpawnerSpawnEvent event) {
         this.eventManager.pushMinecraftEvent(event);
     }
 }

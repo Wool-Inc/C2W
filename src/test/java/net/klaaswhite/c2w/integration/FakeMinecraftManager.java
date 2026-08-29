@@ -102,6 +102,7 @@ public class FakeMinecraftManager implements MinecraftManager {
     @Override public Blocks blocks() { return new FakeBlocks(); }
     @Override public BossBars bossBars() { return new FakeBossBars(); }
     @Override public Plugin plugin() { return new FakePlugin(); }
+    @Override public TrialSpawners trialSpawners() { return new FakeTrialSpawners(); }
 
     @Override
     public void pushEvent(C2WEvent event) {
@@ -220,6 +221,7 @@ public class FakeMinecraftManager implements MinecraftManager {
         @Override public boolean isWorldLoaded(String name) { return worlds.containsKey(name); }
         @Override public void setTime(String worldName, long time) {}
         @Override public void setDoDaylightCycle(String worldName, boolean enabled) {}
+        @Override public void setDoMobSpawning(String worldName, boolean enabled) {}
         @Override public void setStorm(String worldName, boolean storm) {}
         @Override public void setThundering(String worldName, boolean thundering) {}
         @Override public void setDoWeatherCycle(String worldName, boolean enabled) {}
@@ -412,6 +414,21 @@ public class FakeMinecraftManager implements MinecraftManager {
             blocks.put(key(worldName, pos), material);
         }
         @Override public org.bukkit.block.data.BlockData getBlockData(String worldName, BlockPos pos) { return null; }
+    }
+
+    private class FakeTrialSpawners implements TrialSpawners {
+        @Override public boolean isTrialSpawner(String worldName, BlockPos pos) { return false; }
+        @Override public boolean isVault(String worldName, BlockPos pos) { return false; }
+        @Override public void configureSpawner(String worldName, BlockPos pos,
+                               java.util.List<org.bukkit.inventory.ItemStack> spawnEggs) {}
+        @Override public int startExactTrial(String worldName, BlockPos pos, String trialId) { return 0; }
+        @Override public void configureVault(String worldName, BlockPos pos,
+                             java.util.List<org.bukkit.inventory.ItemStack> loot) {}
+        @Override public boolean claimVault(Player player, String worldName, BlockPos pos) { return false; }
+        @Override public void clearConfiguredTrialData() {}
+        @Override public void tagEntity(org.bukkit.entity.Entity entity, String trialId) {}
+        @Override public @Nullable String getEntityTag(org.bukkit.entity.Entity entity) { return null; }
+        @Override public boolean giveTrialKey(Player player) { return false; }
     }
 
     // ========================================================================
