@@ -119,27 +119,27 @@ public class ScoreboardManager implements AutoCloseable {
         // spawn point (falling back to the nearest cell centre).
         Map<LayoutCell, Wool> woolByCell = mapWoolsToCells(activeLayout, wools);
 
-        // Build a lookup of cell by (row,col) for quick access.
-        Map<Long, LayoutCell> cellAt = new HashMap<>();
-        for (var cell : activeLayout.getCells()) {
-            cellAt.put(key(cell.row(), cell.col()), cell);
-        }
+        // Grid layouts already carry display coordinates. Placement layouts
+        // use synthetic row numbers, so project their world X/Z positions
+        // into sorted display columns/rows first.
+        LayoutGrid grid = buildDisplayGrid(activeLayout);
+        Map<Long, LayoutCell> cellAt = grid.cellAt();
 
         // Draw only the rows that actually contain an island; empty rows
         // between islands are collapsed so as many islands as possible fit.
         List<Integer> drawnRows = new ArrayList<>();
-        for (int r = 0; r < activeLayout.getRows(); r++) {
-            if (rowOccupied(cellAt, activeLayout.getCols(), r)) drawnRows.add(r);
+        for (int row = 0; row < grid.rows(); row++) {
+            if (rowOccupied(cellAt, grid.cols(), row)) drawnRows.add(row);
         }
 
         // If the map is still taller than the sidebar, prefer rows holding a
         // live (uncaptured) wool, then fill the rest from the top of the map.
         if (drawnRows.size() > MAX_ROWS) {
-            drawnRows = windowRows(drawnRows, woolByCell, cellAt, activeLayout.getCols());
+            drawnRows = windowRows(drawnRows, woolByCell, cellAt, grid.cols());
         }
 
-        int cols = Math.min(activeLayout.getCols(), MAX_COLS);
-        boolean overflow = activeLayout.getCols() > MAX_COLS;
+        int cols = Math.min(grid.cols(), MAX_COLS);
+        boolean overflow = grid.cols() > MAX_COLS;
 
         // One line per drawn row, highest score (top) = first drawn row.
         for (int i = 0; i < drawnRows.size(); i++) {
@@ -164,6 +164,41 @@ public class ScoreboardManager implements AutoCloseable {
         String bottom = "§cRed: " + capturedCounts.getOrDefault("Red", 0)
                 + "  §9Blue: " + capturedCounts.getOrDefault("Blue", 0);
         objective.getScore(bottom).setScore(0);
+    }
+
+    private static LayoutGrid buildDisplayGrid(MapLayout layout) {
+        Map<Long, LayoutCell> cellAt = new HashMap<>();
+        if (!layout.isPlacementsBased()) {
+            for (var cell : layout.getCells()) {
+                cellAt.put(key(cell.row(), cell.col()), cell);
+            }
+            return new LayoutGrid(cellAt, layout.getRows(), layout.getCols());
+        }
+
+        List<Integer> xPositions = layout.getCells().stream()
+                .map(cell -> cell.worldPosition().x())
+                .distinct()
+                .sorted()
+                .toList();
+        List<Integer> zPositions = layout.getCells().stream()
+                .map(cell -> cell.worldPosition().z())
+                .distinct()
+                .sorted()
+                .toList();
+        Map<Integer, Integer> columnByX = new HashMap<>();
+        Map<Integer, Integer> rowByZ = new HashMap<>();
+        for (int column = 0; column < xPositions.size(); column++) {
+            columnByX.put(xPositions.get(column), column);
+        }
+        for (int row = 0; row < zPositions.size(); row++) {
+            rowByZ.put(zPositions.get(row), row);
+        }
+        for (var cell : layout.getCells()) {
+            int row = rowByZ.get(cell.worldPosition().z());
+            int column = columnByX.get(cell.worldPosition().x());
+            cellAt.put(key(row, column), cell);
+        }
+        return new LayoutGrid(cellAt, zPositions.size(), xPositions.size());
     }
 
     void clear() {
@@ -316,6 +351,9 @@ public class ScoreboardManager implements AutoCloseable {
 
     private static long key(int row, int col) {
         return ((long) row << 32) | (col & 0xFFFFFFFFL);
+    }
+
+    private record LayoutGrid(Map<Long, LayoutCell> cellAt, int rows, int cols) {
     }
 
     @Override

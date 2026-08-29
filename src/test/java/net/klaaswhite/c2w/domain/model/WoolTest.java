@@ -22,7 +22,10 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.startsWith;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -100,6 +103,40 @@ class WoolTest {
         assertEquals("game", wool.getWorldName());
     }
 
+    @Test
+    @DisplayName("failed placement remains retryable")
+    void failedPlacementCanBeRetried() {
+        var mc = createMockMc();
+        var worlds = mc.worlds();
+        var wool = new Wool(mc, newWoolTimer(), WoolColor.RED, new BlockPos(0, 64, 0), "game");
+        var itemUuid = UUID.randomUUID();
+        when(worlds.dropItem(anyString(), any(BlockPos.class), anyString(), eq(1)))
+                .thenReturn(null, itemUuid);
+
+        wool.placeEntityInWorld();
+        assertNull(wool.getDroppedItemId());
+
+        wool.ensureEntity();
+
+        assertEquals(itemUuid, wool.getDroppedItemId());
+        verify(worlds, times(2)).dropItem(anyString(), any(BlockPos.class), anyString(), eq(1));
+    }
+
+    @Test
+    @DisplayName("repeated placement does not create duplicate entities")
+    void repeatedPlacementDoesNotDuplicate() {
+        var mc = createMockMc();
+        var worlds = mc.worlds();
+        var wool = new Wool(mc, newWoolTimer(), WoolColor.RED, new BlockPos(0, 64, 0), "game");
+        when(worlds.dropItem(anyString(), any(BlockPos.class), anyString(), eq(1)))
+                .thenReturn(UUID.randomUUID());
+
+        wool.placeEntityInWorld();
+        wool.placeEntityInWorld();
+
+        verify(worlds).dropItem(anyString(), any(BlockPos.class), anyString(), eq(1));
+    }
+
     // --- State: pickup ---
 
     @Test
@@ -137,7 +174,7 @@ class WoolTest {
     }
 
     @Test
-    @DisplayName("pickup broadcasts message and sets helmet")
+    @DisplayName("pickup broadcasts message and sets wool display")
     void pickupSideEffects() {
         var mc = createMockMc();
         var mcPlayers = mock(net.klaaswhite.c2w.adapter.minecraft.Players.class);
@@ -151,7 +188,24 @@ class WoolTest {
         wool.pickup(player);
 
         verify(mcServer).broadcastMessage(contains("picked up"));
-        verify(mcPlayers).setHelmet(eq("Alice"), any());
+        verify(mcPlayers).setWoolDisplay(eq("Alice"), any());
+    }
+
+    @Test
+    @DisplayName("pickup adds every online player to the boss bar")
+    void pickupShowsBossBarToEveryOnlinePlayer() {
+        var mc = createMockMc();
+        var mcBossBars = mc.bossBars();
+        var bossBar = mock(BossBar.class);
+        var mcServer = mc.server();
+        when(mcBossBars.createBossBar(anyString(), any(), any())).thenReturn(bossBar);
+        when(mcServer.getOnlinePlayerNames()).thenReturn(java.util.List.of("Alice", "Bob"));
+
+        var wool = new Wool(mc, newWoolTimer(), WoolColor.RED, new BlockPos(0, 64, 0), "game");
+        wool.pickup(createPlayer("Alice"));
+
+        verify(bossBar).addPlayer("Alice");
+        verify(bossBar).addPlayer("Bob");
     }
 
     // --- State: dropOnDeath ---
@@ -222,6 +276,21 @@ class WoolTest {
         wool.capture();
 
         verify(mcServer).broadcastMessage(contains("captured"));
+    }
+
+    @Test
+    @DisplayName("capture progress does not send an action bar")
+    void captureProgressDoesNotSendActionBar() {
+        var mc = createMockMc();
+        var player = createPlayer("Alice");
+        var wool = new Wool(mc, newWoolTimer(), WoolColor.RED, new BlockPos(0, 64, 0), "game");
+
+        wool.pickup(player);
+        wool.setCapping(true);
+        wool.setCappingModifier(20);
+        wool.tick();
+
+        verify(mc.players(), never()).sendActionBar(anyString(), startsWith("§eCapturing:"));
     }
 
     // --- Tick: capture progress ---

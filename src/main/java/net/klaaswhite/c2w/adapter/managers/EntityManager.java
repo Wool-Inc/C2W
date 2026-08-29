@@ -26,7 +26,7 @@ public class EntityManager implements AutoCloseable {
         var listeners = itemPickedUpEventListeners.get(item.getUniqueId());
         if (listeners == null) return;
 
-        for (var listener : listeners)
+        for (var listener : new ArrayList<>(listeners))
             listener.accept(event);
     }
 
@@ -46,12 +46,16 @@ public class EntityManager implements AutoCloseable {
 
     public void removeItemPickedUpEventListener(Item item, Consumer<EntityPickupItemEvent> callBack) {
         var id = item.getUniqueId();
-        var listeners = itemPickedUpEventListeners.get(id);
+        removeItemPickedUpEventListener(id, callBack);
+    }
+
+    public void removeItemPickedUpEventListener(UUID itemUuid, Consumer<EntityPickupItemEvent> callBack) {
+        var listeners = itemPickedUpEventListeners.get(itemUuid);
         if (listeners == null) return;
 
         listeners.remove(callBack);
         if (listeners.isEmpty())
-            itemPickedUpEventListeners.remove(id);
+            itemPickedUpEventListeners.remove(itemUuid);
     }
 
     @Override

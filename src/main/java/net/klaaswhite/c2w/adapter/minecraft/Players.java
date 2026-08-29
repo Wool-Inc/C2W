@@ -68,8 +68,12 @@ public interface Players {
     /** Set the player's food level (0–20). */
     void setFoodLevel(String playerName, int food);
 
-    /** Set the player's helmet slot to the given item. */
-    void setHelmet(String playerName, ItemStackRef item);
+    /**
+     * Display the given item above the player's head, or clear it if {@code item}
+     * is empty. The item is shown on a hidden, small armor stand that rides as a
+     * passenger on the player so it follows the carrier.
+     */
+    void setWoolDisplay(String playerName, ItemStackRef item);
 
     /** Send an action bar message to the player. */
     void sendActionBar(String playerName, String message);

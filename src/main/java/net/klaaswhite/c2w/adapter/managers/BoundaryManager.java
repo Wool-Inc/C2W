@@ -11,6 +11,7 @@ import net.klaaswhite.c2w.domain.model.DomainBoundingBox;
 import net.klaaswhite.c2w.domain.model.ManagedTeam;
 import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
 
 import java.util.HashSet;
 
@@ -30,6 +31,7 @@ public class BoundaryManager implements AutoCloseable {
 
         this.eventManager.registerMinecraftEvent(PlayerMoveEvent.class, this::onPlayerMove);
         this.eventManager.registerMinecraftEvent(PlayerDeathEvent.class, this::onPlayerDeath);
+        this.eventManager.registerMinecraftEvent(PlayerQuitEvent.class, this::onPlayerQuit);
         this.eventManager.registerInternalEvent(StartGameEvent.class, this::onStartGame);
         this.eventManager.registerInternalEvent(WoolDroppedEvent.class, this::onWoolDropped);
         this.eventManager.registerInternalEvent(WoolCapturedEvent.class, this::onWoolCaptured);
@@ -69,6 +71,28 @@ public class BoundaryManager implements AutoCloseable {
 
     public void onPlayerDeath(PlayerDeathEvent event) {
         var managedPlayer = this.playerManager.getPlayer(event.getEntity());
+        if (managedPlayer == null) return;
+
+        // Drop and reset the carried wool before removing the player from the
+        // boundary engine. dropOnDeath clears the carrier/helmet, resets capture
+        // progress, spawns the wool back at its spawn position, and pushes
+        // WoolDroppedEvent (which unregisters it from the WoolTimer via
+        // onWoolDropped). Call it FIRST so the carry is cleared before
+        // engine.removePlayer inspects the player's carried wool.
+        if (managedPlayer.getCarry() instanceof Wool wool) {
+            wool.dropOnDeath(managedPlayer);
+        }
+        engine.removePlayer(managedPlayer);
+    }
+
+    /**
+     * On disconnect, remove the leaving player from the capture pit exactly as if
+     * they had walked out of it. The carried wool stays with the player (left on
+     * them), but it is removed from the in-pit list and stops capping. Mirrors
+     * {@link net.klaaswhite.c2w.domain.game.BoundaryEngine#removePlayer}.
+     */
+    public void onPlayerQuit(PlayerQuitEvent event) {
+        var managedPlayer = this.playerManager.getPlayer(event.getPlayer());
         if (managedPlayer != null) {
             engine.removePlayer(managedPlayer);
         }

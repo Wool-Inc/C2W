@@ -268,11 +268,38 @@ class ScoreboardManagerTest {
 
         manager.onStartGame(new StartGameEvent("game"));
 
-        var line = argumentCaptorLine();
-        // LONG sits at (row 0, col 0), so a wool mapped there is the first char.
-        assertTrue(line.startsWith("§c\u25A0"),
-                "wool should render on LONG (col 0), got: " + line);
+        var lines = capturedLines();
+        // LONG is at x=40 while SHELTER is at x=0, so LONG is the second
+        // column of the first spatial row.
+        assertTrue(lines.stream().anyMatch(line -> line.startsWith("\u00B7§c\u25A0")),
+            "wool should render on LONG (the second spatial column), got: " + lines);
     }
+
+        @Test
+        @DisplayName("placements are ordered by world position instead of save order")
+        void placementsUseWorldPositionOrder() {
+        var cells = new ArrayList<LayoutCell>();
+        // Deliberately scrambled list order: the scoreboard should follow the
+        // map's X/Z positions, not the order in which the editor saved them.
+        cells.add(LayoutCell.of(0, 0, "BLUE_CELL", new BlockPos(0, 64, 100), 0f));
+        cells.add(LayoutCell.of(1, 0, "RED_CELL", new BlockPos(0, 64, 0), 0f));
+        cells.add(LayoutCell.of(2, 0, "GREEN_CELL", new BlockPos(100, 64, 0), 0f));
+        var lay = placementsLayout(3, 1, cells);
+        when(gameManager.getActiveLayout()).thenReturn(lay);
+        var blue = wool(WoolColor.BLUE, new BlockPos(0, 64, 100), false, false);
+        var red = wool(WoolColor.RED, new BlockPos(0, 64, 0), false, false);
+        var green = wool(WoolColor.GREEN, new BlockPos(100, 64, 0), false, false);
+        when(markerManager.getWools()).thenReturn((List) List.of(blue, red, green));
+
+        manager.onStartGame(new StartGameEvent("game"));
+
+        var lines = capturedLines();
+        assertEquals(3, lines.size(), "two spatial rows plus the bottom count row");
+        assertTrue(lines.get(0).startsWith("§c\u25A0§a\u25A0"),
+            "z=0 row should be ordered by x, got: " + lines.get(0));
+        assertTrue(lines.get(1).startsWith("§9\u25A0"),
+            "z=100 row should follow the z=0 row, got: " + lines.get(1));
+        }
 
     @Test
     @DisplayName("bottom line shows per-team captured wool counts")

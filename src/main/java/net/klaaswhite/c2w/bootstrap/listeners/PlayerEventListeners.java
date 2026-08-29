@@ -7,6 +7,7 @@ import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.player.PlayerChangedWorldEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
 
 public class PlayerEventListeners implements Listener {
 
@@ -33,6 +34,11 @@ public class PlayerEventListeners implements Listener {
 
     @EventHandler
     public void onPlayerMove(PlayerMoveEvent event) {
+        this.eventManager.pushMinecraftEvent(event);
+    }
+
+    @EventHandler
+    public void onPlayerQuit(PlayerQuitEvent event) {
         this.eventManager.pushMinecraftEvent(event);
     }
 

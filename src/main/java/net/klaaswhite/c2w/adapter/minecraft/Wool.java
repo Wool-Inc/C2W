@@ -90,11 +90,13 @@ public class Wool implements net.klaaswhite.c2w.domain.model.Wool {
 
         removeEntityFromWorld();
         cappingModifier.set(woolTimer.getBaseCapture());
-        bossBar.addPlayer(player.getPlayer());
+        for (String onlinePlayerName : mc.server().getOnlinePlayerNames()) {
+            bossBar.addPlayer(onlinePlayerName);
+        }
 
         String playerName = player.getPlayer().getName();
         mc.server().broadcastMessage("Wool '" + color.name() + "' picked up by '" + player.getPlayer().getDisplayName() + "'!");
-        mc.players().setHelmet(playerName, ItemStackRef.wool(color));
+        mc.players().setWoolDisplay(playerName, ItemStackRef.wool(color));
         mc.players().sendActionBar(playerName, "§aYou picked up §e" + color.name() + "§a wool!");
         mc.players().playSound(playerName, "ENTITY_ITEM_PICKUP", 1.0f, 1.0f);
         mc.players().spawnParticles(playerName, worldName, spawnPos.x(), spawnPos.y(), spawnPos.z(), "REDSTONE", 20, 255, 255, 255);
@@ -161,11 +163,6 @@ public class Wool implements net.klaaswhite.c2w.domain.model.Wool {
         }
         cappedAmount.set(current);
         updateBossBar();
-        ManagedPlayer currentCarrier = carrier.get();
-        if (currentCarrier != null) {
-            String playerName = currentCarrier.getPlayer().getName();
-            mc.players().sendActionBar(playerName, "§eCapturing: " + getProgressString(current, CAP_AMOUNT));
-        }
     }
 
     /**
@@ -181,7 +178,6 @@ public class Wool implements net.klaaswhite.c2w.domain.model.Wool {
         blockPlaced = true;
         bossBar.setVisible(false);
         mc.server().broadcastMessage("Wool '" + color.name() + "' has been captured!");
-        mc.players().sendTitle(playerName, "§6Wool Captured!", "§e" + color.name() + " wool secured!", 10, 40, 20);
         mc.players().playSound(playerName, "ENTITY_PLAYER_LEVELUP", 1.0f, 1.0f);
         var capperPlayer = capper.getPlayer();
         BlockPos capPos = capperPlayer.getPosition();
@@ -192,9 +188,11 @@ public class Wool implements net.klaaswhite.c2w.domain.model.Wool {
     }
 
     public void placeEntityInWorld() {
-        if (blockPlaced) return;
+        if (blockPlaced || entityPlaced) return;
+        var newDroppedItemId = mc.worlds().dropItem(worldName, spawnPos, color.name() + "_WOOL", 1);
+        if (newDroppedItemId == null) return;
+        droppedItemId = newDroppedItemId;
         entityPlaced = true;
-        droppedItemId = mc.worlds().dropItem(worldName, spawnPos, color.name() + "_WOOL", 1);
     }
 
     public void removeEntityFromWorld() {
@@ -224,13 +222,8 @@ public class Wool implements net.klaaswhite.c2w.domain.model.Wool {
         ManagedPlayer prev = carrier.getAndSet(null);
         if (prev != null) {
             prev.removeCarry();
-            mc.players().setHelmet(prev.getPlayer().getName(), ItemStackRef.empty());
+            mc.players().setWoolDisplay(prev.getPlayer().getName(), ItemStackRef.empty());
         }
-    }
-
-    private String getProgressString(int current, int max) {
-        int filled = (int) ((double) current / max * 10);
-        return "§a" + "█".repeat(filled) + "§7" + "░".repeat(10 - filled) + " §f" + (int)((double)current/max*100) + "%";
     }
 
     private void updateBossBar() {

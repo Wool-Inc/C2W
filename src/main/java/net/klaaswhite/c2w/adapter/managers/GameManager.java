@@ -573,29 +573,12 @@ public class GameManager implements AutoCloseable {
         block.setBlockData(cb.blockData, false);
 
         if (cb.tileState == null) return;
-        BlockState current = block.getState();
-
-        if (cb.tileState instanceof CreatureSpawner src && current instanceof CreatureSpawner dst) {
-            dst.setSpawnedType(src.getSpawnedType());
-            dst.setDelay(src.getDelay());
-            dst.setMinSpawnDelay(src.getMinSpawnDelay());
-            dst.setMaxSpawnDelay(src.getMaxSpawnDelay());
-            dst.setSpawnCount(src.getSpawnCount());
-            dst.setMaxNearbyEntities(src.getMaxNearbyEntities());
-            dst.setRequiredPlayerRange(src.getRequiredPlayerRange());
-            dst.setSpawnRange(src.getSpawnRange());
-            dst.update();
-        } else if (cb.tileState instanceof Container src && current instanceof Container dst) {
-            dst.getInventory().setContents(src.getInventory().getContents());
-            dst.update();
-        } else {
-            // Generic fallback: apply BlockData and force update
-            current.setBlockData(cb.blockData);
-            current.update(true);
-        }
+        BlockState destinationState = cb.tileState.copy(block.getLocation());
+        destinationState.setBlockData(cb.blockData);
+        destinationState.update(true, false);
     }
 
-    /** Place a container-mode resource: convert ItemStack to a block, applying NBT for spawners. */
+    /** Place a container-mode resource: convert ItemStack to a block and restore its block-state data. */
     private void placeResourceFromItem(World world, BlockPos pos, ItemStack item) {
         Material mat = item.getType();
         if (!mat.isBlock() || mat.isAir()) {
@@ -605,22 +588,10 @@ public class GameManager implements AutoCloseable {
         Block block = world.getBlockAt(pos.x(), pos.y(), pos.z());
         block.setType(mat, false);
 
-        if (mat == Material.SPAWNER && item.getItemMeta() instanceof BlockStateMeta bsm
-                && bsm.hasBlockState()) {
-            if (block.getState() instanceof CreatureSpawner spawner) {
-                BlockState spawnerState = bsm.getBlockState();
-                if (spawnerState instanceof CreatureSpawner cs) {
-                    spawner.setSpawnedType(cs.getSpawnedType());
-                    spawner.setDelay(cs.getDelay());
-                    spawner.setMinSpawnDelay(cs.getMinSpawnDelay());
-                    spawner.setMaxSpawnDelay(cs.getMaxSpawnDelay());
-                    spawner.setSpawnCount(cs.getSpawnCount());
-                    spawner.setMaxNearbyEntities(cs.getMaxNearbyEntities());
-                    spawner.setRequiredPlayerRange(cs.getRequiredPlayerRange());
-                    spawner.setSpawnRange(cs.getSpawnRange());
-                    spawner.update();
-                }
-            }
+        if (item.getItemMeta() instanceof BlockStateMeta bsm && bsm.hasBlockState()) {
+            BlockState itemState = bsm.getBlockState();
+            BlockState destinationState = itemState.copy(block.getLocation());
+            destinationState.update(true, false);
         }
     }
 

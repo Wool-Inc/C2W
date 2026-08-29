@@ -25,6 +25,7 @@ import org.bukkit.generator.ChunkGenerator;
 import org.bukkit.block.Block;
 import org.bukkit.block.TileState;
 import org.bukkit.block.data.BlockData;
+import org.bukkit.entity.ArmorStand;
 import org.bukkit.entity.Marker;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
@@ -74,6 +75,12 @@ public class BukkitMinecraftManager implements MinecraftManager, AutoCloseable {
      * logging the same warning on every EnvironmentManager heartbeat tick.
      */
     private final Set<String> warnedNoClockWorlds = new HashSet<>();
+    /**
+     * Tracks the armor stand used to display a carried wool above a player:
+     * key = player UUID, value = armor stand UUID. Used to clear the display
+     * when the wool is dropped or captured.
+     */
+    private final Map<UUID, UUID> carriedWoolStandUuids = new HashMap<>();
     private net.klaaswhite.c2w.adapter.managers.EventManager eventManager; // ponytail: late-set, wired by App after both exist
 
     /**
@@ -167,7 +174,14 @@ public class BukkitMinecraftManager implements MinecraftManager, AutoCloseable {
 
     @Override
     public void close() {
-        // No resources to clean up
+        // Remove any armor stands still displaying carried wools.
+        for (UUID standId : new HashSet<>(carriedWoolStandUuids.values())) {
+            var entity = Bukkit.getEntity(standId);
+            if (entity instanceof ArmorStand stand) {
+                stand.remove();
+            }
+        }
+        carriedWoolStandUuids.clear();
     }
 
     // =========================================================================
@@ -217,9 +231,9 @@ public class BukkitMinecraftManager implements MinecraftManager, AutoCloseable {
         }
 
         @Override
-        public void addPlayer(PlayerHandle player) {
-            Object bp = player.getBukkitPlayer();
-            if (bp instanceof org.bukkit.entity.Player p) {
+        public void addPlayer(String playerName) {
+            Player p = Bukkit.getPlayerExact(playerName);
+            if (p != null) {
                 bar.addPlayer(p);
             }
         }
@@ -374,16 +388,51 @@ public class BukkitMinecraftManager implements MinecraftManager, AutoCloseable {
         }
 
         @Override
-        public void setHelmet(String playerName, ItemStackRef item) {
+        public void setWoolDisplay(String playerName, ItemStackRef item) {
             Player player = Bukkit.getPlayer(playerName);
             if (player == null) return;
             if (item.isEmpty()) {
-                player.getInventory().setHelmet(null);
+                removeCarriedWoolStand(player);
             } else {
                 Material mat = Material.matchMaterial(item.materialName());
                 if (mat != null) {
-                    player.getInventory().setHelmet(new ItemStack(mat, item.count()));
+                    spawnCarriedWoolStand(player, new ItemStack(mat, item.count()));
                 }
+            }
+        }
+
+        /**
+         * Spawn a hidden, small armor stand that wears the item on its head and
+         * rides as a passenger on the given player, so the wool visibly floats
+         * above the carrier. Any previously-displayed stand for this player is
+         * replaced.
+         */
+        private void spawnCarriedWoolStand(Player player, ItemStack item) {
+            removeCarriedWoolStand(player);
+            var loc = player.getLocation();
+            var stand = player.getWorld().spawn(loc, ArmorStand.class, as -> {
+                as.setVisible(false);
+                as.setSmall(true);
+                as.setGravity(false);
+                as.setInvulnerable(true);
+                as.setCanPickupItems(false);
+                as.setArms(false);
+                as.setBasePlate(false);
+                as.getEquipment().setHelmet(item);
+                as.setMarker(true);
+            });
+            player.addPassenger(stand);
+            carriedWoolStandUuids.put(player.getUniqueId(), stand.getUniqueId());
+        }
+
+        /** Remove and forget the armor stand currently displaying a wool for the given player. */
+        private void removeCarriedWoolStand(Player player) {
+            UUID standId = carriedWoolStandUuids.remove(player.getUniqueId());
+            if (standId == null) return;
+            var entity = Bukkit.getEntity(standId);
+            if (entity instanceof ArmorStand stand) {
+                player.removePassenger(stand);
+                stand.remove();
             }
         }
 
@@ -698,12 +747,13 @@ public class BukkitMinecraftManager implements MinecraftManager, AutoCloseable {
             if (world == null) return null;
             Material mat = Material.matchMaterial(materialName);
             if (mat == null) return null;
-            var item = world.dropItem(new Location(world, pos.x(), pos.y(), pos.z()), new ItemStack(mat, count), i -> {
+            var item = world.dropItem(new Location(world, pos.x() + 0.5, pos.y(), pos.z() + 0.5), new ItemStack(mat, count), i -> {
                 i.setVelocity(new org.bukkit.util.Vector(0, 0, 0));
                 i.setGravity(false);
             });
             if (item == null) return null;
             item.setPersistent(true);
+            item.setUnlimitedLifetime(true);
             return item.getUniqueId();
         }
 
@@ -713,12 +763,13 @@ public class BukkitMinecraftManager implements MinecraftManager, AutoCloseable {
             if (world == null) return null;
             Material mat = Material.matchMaterial(item.materialName());
             if (mat == null) return null;
-            var dropped = world.dropItem(new Location(world, pos.x(), pos.y(), pos.z()), new ItemStack(mat, item.count()), i -> {
+            var dropped = world.dropItem(new Location(world, pos.x() + 0.5, pos.y(), pos.z() + 0.5), new ItemStack(mat, item.count()), i -> {
                 i.setVelocity(new org.bukkit.util.Vector(0, 0, 0));
                 i.setGravity(false);
             });
             if (dropped == null) return null;
             dropped.setPersistent(true);
+            dropped.setUnlimitedLifetime(true);
             return dropped.getUniqueId();
         }
 

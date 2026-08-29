@@ -145,6 +145,25 @@ class EntityManagerTest {
         assertEquals(1, callCount.get());
     }
 
+    @Test
+    @DisplayName("UUID removal works without a live item entity")
+    void removeByUuidWithoutItemEntity() {
+        var itemUuid = UUID.randomUUID();
+        var event = mock(EntityPickupItemEvent.class);
+        var item = mock(Item.class);
+        when(item.getUniqueId()).thenReturn(itemUuid);
+        when(event.getItem()).thenReturn(item);
+
+        var called = new AtomicInteger(0);
+        Consumer<EntityPickupItemEvent> callback = e -> called.incrementAndGet();
+
+        entityManager.addItemPickedUpEventListener(itemUuid, callback);
+        entityManager.removeItemPickedUpEventListener(itemUuid, callback);
+        entityManager.onEntityPickupItemEvent(event);
+
+        assertEquals(0, called.get());
+    }
+
     // --- close() ---
 
     @Test

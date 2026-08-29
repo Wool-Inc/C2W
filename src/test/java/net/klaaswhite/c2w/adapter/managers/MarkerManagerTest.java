@@ -3,19 +3,29 @@ package net.klaaswhite.c2w.adapter.managers;
 import net.klaaswhite.c2w.adapter.minecraft.Markers;
 import net.klaaswhite.c2w.adapter.minecraft.MinecraftManager;
 import net.klaaswhite.c2w.adapter.minecraft.Players;
+import net.klaaswhite.c2w.adapter.minecraft.BossBar;
+import net.klaaswhite.c2w.adapter.minecraft.BossBars;
 import net.klaaswhite.c2w.bootstrap.Managers;
 import net.klaaswhite.c2w.domain.events.StartGameEvent;
+import net.klaaswhite.c2w.domain.events.WoolDroppedEvent;
 import net.klaaswhite.c2w.domain.model.BlockPos;
 import net.klaaswhite.c2w.domain.model.ManagedMarker;
+import net.klaaswhite.c2w.domain.model.ManagedPlayer;
+import net.klaaswhite.c2w.domain.model.PlayerHandle;
 import org.bukkit.entity.Player;
+import org.bukkit.entity.Item;
+import org.bukkit.event.entity.EntityPickupItemEvent;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.util.Hashtable;
 import java.util.List;
+import java.util.UUID;
+import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 @DisplayName("MarkerManager")
@@ -265,6 +275,71 @@ class MarkerManagerTest {
         // After start, getMarkersInWorld() should return empty (not null)
         List<String> result = manager.getMarkersInWorld();
         assertNotNull(result);
+    }
+
+    @Test
+    @DisplayName("replacement wool item remains pickable after a death drop")
+    void replacementWoolItemRemainsPickable() {
+        var entityManager = new EntityManager(eventManager);
+        managers.entityManager = entityManager;
+        managers.playerManager = mock(PlayerManager.class);
+
+        var bossBars = mock(BossBars.class);
+        when(mc.bossBars()).thenReturn(bossBars);
+        when(bossBars.createBossBar(anyString(), any(), any())).thenReturn(mock(BossBar.class));
+        when(mc.server()).thenReturn(mock(net.klaaswhite.c2w.adapter.minecraft.Server.class));
+        var worlds = mock(MinecraftManager.Worlds.class);
+        when(mc.worlds()).thenReturn(worlds);
+        var initialItemUuid = UUID.randomUUID();
+        var replacementItemUuid = UUID.randomUUID();
+        when(worlds.dropItem(anyString(), any(BlockPos.class), anyString(), eq(1)))
+                .thenReturn(initialItemUuid, replacementItemUuid);
+        var marker = mock(net.klaaswhite.c2w.adapter.minecraft.MarkerEntity.class);
+        var woolPosition = new BlockPos(10, 64, 10);
+        when(marker.getPosition()).thenReturn(woolPosition);
+        when(marker.getPersistentData("map_marker")).thenReturn("wool");
+        when(markers.getMarkersInWorld("c2w_game")).thenReturn(List.of(marker));
+
+        var manager = createManager();
+        manager.start(new StartGameEvent("c2w_game"));
+        var wool = manager.getWools().get(0);
+        var managedPlayer = createManagedPlayer("Alice");
+        try (var ignored = mockStatic(org.bukkit.Bukkit.class)) {
+            assertTrue(wool.pickup(managedPlayer));
+            wool.dropOnDeath(managedPlayer);
+
+            @SuppressWarnings("unchecked")
+            var droppedListener = (Consumer<WoolDroppedEvent>) captureWoolDroppedListener();
+            droppedListener.accept(new WoolDroppedEvent(wool));
+
+            var item = mock(Item.class);
+            when(item.getUniqueId()).thenReturn(replacementItemUuid);
+            var bukkitPlayer = mock(Player.class);
+            when(managers.playerManager.getPlayer(bukkitPlayer)).thenReturn(managedPlayer);
+            var pickupEvent = mock(EntityPickupItemEvent.class);
+            when(pickupEvent.getItem()).thenReturn(item);
+            when(pickupEvent.getEntity()).thenReturn(bukkitPlayer);
+
+            entityManager.onEntityPickupItemEvent(pickupEvent);
+
+            assertTrue(wool.isCarried());
+            verify(pickupEvent).setCancelled(true);
+        }
+    }
+
+    private Consumer<?> captureWoolDroppedListener() {
+        var captor = org.mockito.ArgumentCaptor.forClass(Consumer.class);
+        verify(eventManager).registerInternalEvent(eq(WoolDroppedEvent.class), captor.capture());
+        return captor.getValue();
+    }
+
+    private ManagedPlayer createManagedPlayer(String name) {
+        var handle = mock(PlayerHandle.class);
+        when(handle.getName()).thenReturn(name);
+        when(handle.getDisplayName()).thenReturn(name);
+        when(handle.getUniqueId()).thenReturn(UUID.randomUUID());
+        when(handle.getPosition()).thenReturn(new BlockPos(10, 64, 10));
+        return new ManagedPlayer(handle);
     }
 
     // ---------------------------------------------------------------

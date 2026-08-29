@@ -16,8 +16,12 @@ import org.bukkit.event.entity.EntityPickupItemEvent;
 
 import org.jspecify.annotations.Nullable;
 import java.util.Hashtable;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 
 /**
  * Tracks named marker entities (keyed by their {@code map_marker} persistent
@@ -46,6 +50,7 @@ public class MarkerManager implements AutoCloseable {
     private final MarkerEngine engine;
 
     private final AtomicBoolean initialized;
+    private final Map<Wool, PickupRegistration> woolPickupRegistrations;
 
     private String worldName;
 
@@ -57,8 +62,10 @@ public class MarkerManager implements AutoCloseable {
 
         this.eventManager.registerInternalEvent(StartGameEvent.class, this::start);
         this.eventManager.registerInternalEvent(net.klaaswhite.c2w.domain.events.ResetEvent.class, this::onReset);
+        this.eventManager.registerInternalEvent(net.klaaswhite.c2w.domain.events.WoolDroppedEvent.class, this::onWoolDropped);
 
         this.initialized = new AtomicBoolean(false);
+        this.woolPickupRegistrations = new HashMap<>();
     }
 
     public String getMarkerKey() {
@@ -139,13 +146,21 @@ public class MarkerManager implements AutoCloseable {
      */
     private void registerWoolPickupListeners() {
         for (var wool : engine.getWools()) {
-            var droppedId = wool.getDroppedItemId();
-            if (droppedId == null) continue;
+            registerWoolPickupListener(wool);
+        }
+    }
 
-            // Register the listener by UUID directly — the chunk may not be loaded
-            // yet so Bukkit.getEntity() could return null.  The EntityManager's
-            // UUID-based lookup fires when the item is picked up regardless.
-            managers.entityManager.addItemPickedUpEventListener(droppedId, event -> {
+    private void registerWoolPickupListener(Wool wool) {
+        var droppedId = wool.getDroppedItemId();
+        if (droppedId == null) return;
+
+        var existing = woolPickupRegistrations.get(wool);
+        if (existing != null && existing.itemUuid().equals(droppedId)) return;
+        if (existing != null) {
+            managers.entityManager.removeItemPickedUpEventListener(existing.itemUuid(), existing.listener());
+        }
+
+        Consumer<EntityPickupItemEvent> listener = event -> {
                 if (!(event.getEntity() instanceof org.bukkit.entity.Player player)) {
                     event.setCancelled(true);
                     return;
@@ -160,10 +175,30 @@ public class MarkerManager implements AutoCloseable {
                     event.setCancelled(true);
                     return;
                 }
+                unregisterWoolPickupListener(wool);
                 // pickup succeeded — cancel the default Bukkit pickup so the item
                 // doesn't go into the player's inventory; the wool handles it
                 event.setCancelled(true);
-            });
+            };
+        managers.entityManager.addItemPickedUpEventListener(droppedId, listener);
+        woolPickupRegistrations.put(wool, new PickupRegistration(droppedId, listener));
+    }
+
+    private void unregisterWoolPickupListener(Wool wool) {
+        var registration = woolPickupRegistrations.remove(wool);
+        if (registration == null) return;
+        managers.entityManager.removeItemPickedUpEventListener(registration.itemUuid(), registration.listener());
+    }
+
+    private void unregisterAllWoolPickupListeners() {
+        for (var wool : new java.util.ArrayList<>(woolPickupRegistrations.keySet())) {
+            unregisterWoolPickupListener(wool);
+        }
+    }
+
+    private void onWoolDropped(net.klaaswhite.c2w.domain.events.WoolDroppedEvent event) {
+        if (event.getWool() instanceof Wool wool) {
+            registerWoolPickupListener(wool);
         }
     }
 
@@ -191,6 +226,7 @@ public class MarkerManager implements AutoCloseable {
      * marker discovery are preserved so a subsequent game start can re-init.
      */
     public void reset() {
+        unregisterAllWoolPickupListeners();
         engine.reset();
     }
 
@@ -200,8 +236,11 @@ public class MarkerManager implements AutoCloseable {
 
     @Override
     public void close() {
+        unregisterAllWoolPickupListeners();
         engine.close();
         initialized.set(false);
         this.worldName = null;
     }
+
+    private record PickupRegistration(UUID itemUuid, Consumer<EntityPickupItemEvent> listener) {}
 }

@@ -4,8 +4,7 @@ import net.klaaswhite.c2w.adapter.managers.EventManager;
 import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.player.PlayerChangedWorldEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
-import org.bukkit.event.player.PlayerMoveEvent;
-import org.junit.jupiter.api.BeforeEach;
+import org.bukkit.event.player.PlayerMoveEvent;import org.bukkit.event.player.PlayerQuitEvent;import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -52,6 +51,13 @@ class PlayerEventListenersTest {
     @DisplayName("onPlayerMove pushes the event")
     void movePushesEvent(@Mock PlayerMoveEvent event) {
         listeners.onPlayerMove(event);
+        verify(eventManager).pushMinecraftEvent(event);
+    }
+
+    @Test
+    @DisplayName("onPlayerQuit pushes the event")
+    void quitPushesEvent(@Mock PlayerQuitEvent event) {
+        listeners.onPlayerQuit(event);
         verify(eventManager).pushMinecraftEvent(event);
     }
 }

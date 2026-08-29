@@ -119,7 +119,7 @@ public class FakeMinecraftManager implements MinecraftManager {
         public final List<String> messages = new ArrayList<>();
         public final List<String> actionBars = new ArrayList<>();
         public final List<String> titles = new ArrayList<>();
-        public ItemStackRef helmet;
+        public ItemStackRef woolDisplay;
         public final UUID uuid = UUID.randomUUID();
         public Player bukkitPlayer;
         FakePlayer(String name) { this.name = name; this.worldName = "c2w_game"; this.position = new BlockPos(0, 65, 0); }
@@ -157,9 +157,9 @@ public class FakeMinecraftManager implements MinecraftManager {
         @Override public void removePotionEffects(String playerName) {}
         @Override public void setHealth(String playerName, double health) {}
         @Override public void setFoodLevel(String playerName, int food) {}
-        @Override public void setHelmet(String playerName, ItemStackRef item) {
+        @Override public void setWoolDisplay(String playerName, ItemStackRef item) {
             var p = players.get(playerName);
-            if (p != null) p.helmet = item;
+            if (p != null) p.woolDisplay = item;
         }
         @Override public void sendActionBar(String playerName, String message) {
             var p = players.get(playerName);
@@ -423,7 +423,7 @@ public class FakeMinecraftManager implements MinecraftManager {
         private double progress;
         @Override public void setVisible(boolean visible) { this.visible = visible; }
         @Override public void setProgress(double progress) { this.progress = progress; }
-        @Override public void addPlayer(PlayerHandle player) {}
+        @Override public void addPlayer(String playerName) {}
     }
 
     private class FakeBossBars implements BossBars {

@@ -14,7 +14,9 @@ import net.klaaswhite.c2w.domain.model.TeamColor;
 import net.klaaswhite.c2w.domain.model.WoolColor;
 import org.bukkit.Location;
 import org.bukkit.entity.Player;
+import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -180,6 +182,94 @@ class BoundaryManagerTest {
         when(playerManager.getPlayer(player)).thenReturn(managedPlayer);
 
         assertDoesNotThrow(() -> boundaryManager.onPlayerMove(event));
+    }
+
+    // --- onPlayerDeath ---
+
+    @Test
+    @DisplayName("onPlayerDeath handles null managed player")
+    void onPlayerDeathUnknownPlayer() {
+        var event = mock(PlayerDeathEvent.class);
+        var player = mock(Player.class);
+        when(event.getEntity()).thenReturn(player);
+        when(playerManager.getPlayer(player)).thenReturn(null);
+
+        assertDoesNotThrow(() -> boundaryManager.onPlayerDeath(event));
+    }
+
+    @Test
+    @DisplayName("onPlayerDeath drops and resets the carried wool")
+    void onPlayerDeathDropsCarriedWool() {
+        var mc = createMockMc();
+        var woolTimer = new net.klaaswhite.c2w.domain.game.WoolTimer(
+                new net.klaaswhite.c2w.domain.game.WoolTimer.Scheduler() {
+                    public Object scheduleRepeating(Runnable task, long delay, long interval) { return null; }
+                    public void cancel(Object taskId) {}
+                });
+        var wool = new Wool(mc, woolTimer, WoolColor.RED, new BlockPos(0, 64, 0), "game");
+
+        var handle = mock(PlayerHandle.class);
+        when(handle.getUniqueId()).thenReturn(UUID.randomUUID());
+        when(handle.getName()).thenReturn("Alice");
+        when(handle.getDisplayName()).thenReturn("Alice");
+        when(handle.getPosition()).thenReturn(new BlockPos(10, 64, 10));
+        var managedPlayer = new ManagedPlayer(handle);
+        assertTrue(wool.pickup(managedPlayer));
+        assertSame(wool, managedPlayer.getCarry());
+        assertTrue(wool.isCarried());
+
+        var event = mock(PlayerDeathEvent.class);
+        var player = mock(Player.class);
+        when(event.getEntity()).thenReturn(player);
+        when(playerManager.getPlayer(player)).thenReturn(managedPlayer);
+
+        boundaryManager.onPlayerDeath(event);
+
+        // dropOnDeath must clear the carrier, making the wool no longer carried.
+        assertNull(managedPlayer.getCarry());
+        assertFalse(wool.isCarried());
+    }
+
+    @Test
+    @DisplayName("onPlayerQuit removes player from the pit but keeps the wool on them")
+    void onPlayerQuitKeepsWoolRemovesFromPit() {
+        var mc = createMockMc();
+        var woolTimer = new net.klaaswhite.c2w.domain.game.WoolTimer(
+                new net.klaaswhite.c2w.domain.game.WoolTimer.Scheduler() {
+                    public Object scheduleRepeating(Runnable task, long delay, long interval) { return null; }
+                    public void cancel(Object taskId) {}
+                });
+        var wool = new Wool(mc, woolTimer, WoolColor.RED, new BlockPos(0, 64, 0), "game");
+
+        var handle = mock(PlayerHandle.class);
+        when(handle.getUniqueId()).thenReturn(UUID.randomUUID());
+        when(handle.getName()).thenReturn("Alice");
+        when(handle.getDisplayName()).thenReturn("Alice");
+        when(handle.getPosition()).thenReturn(new BlockPos(10, 64, 10));
+        var managedPlayer = new ManagedPlayer(handle);
+        assertTrue(wool.pickup(managedPlayer));
+
+        // Put the player in a capture pit so quitting would normally remove them.
+        ManagedTeam.teams.put("Red", new ManagedTeam("Red", TeamColor.RED));
+        managedPlayer.setTeam(ManagedTeam.teams.get("Red"));
+        var marker1 = mock(MarkerEntity.class);
+        var marker2 = mock(MarkerEntity.class);
+        when(marker1.getPosition()).thenReturn(new BlockPos(0, 0, 0));
+        when(marker2.getPosition()).thenReturn(new BlockPos(10, 10, 10));
+        when(markerManager.getMarker("boundary-woolcap-pit-1")).thenReturn(marker1);
+        when(markerManager.getMarker("boundary-woolcap-pit-2")).thenReturn(marker2);
+        boundaryManager.onStartGame(new StartGameEvent("c2w_game"));
+
+        var event = mock(PlayerQuitEvent.class);
+        var player = mock(Player.class);
+        when(event.getPlayer()).thenReturn(player);
+        when(playerManager.getPlayer(player)).thenReturn(managedPlayer);
+
+        boundaryManager.onPlayerQuit(event);
+
+        // Wool stays carried (kept on the player) on disconnect.
+        assertSame(wool, managedPlayer.getCarry());
+        assertTrue(wool.isCarried());
     }
 
     // --- onWoolDropped ---
