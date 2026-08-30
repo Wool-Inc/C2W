@@ -1299,6 +1299,12 @@ public class BukkitMinecraftManager implements MinecraftManager, AutoCloseable {
 
         @Override
         public int startExactTrial(String worldName, BlockPos pos, String trialId) {
+            return startExactTrial(worldName, pos, trialId, Integer.MAX_VALUE, null, null);
+        }
+
+        @Override
+        public int startExactTrial(String worldName, BlockPos pos, String trialId, int amount,
+                                   java.util.function.Consumer<Entity> onSpawn, Runnable onComplete) {
             String key = locationKey(worldName, pos);
             List<ItemStack> source = trialSpawnEggs.get(key);
             World world = Bukkit.getWorld(worldName);
@@ -1316,22 +1322,37 @@ public class BukkitMinecraftManager implements MinecraftManager, AutoCloseable {
             }
             if (queue.isEmpty()) return 0;
             java.util.Collections.shuffle(queue);
+            if (amount != Integer.MAX_VALUE && amount < queue.size()) {
+                queue = new java.util.ArrayList<>(queue.subList(0, Math.max(0, amount)));
+            }
+            if (queue.isEmpty()) return 0;
+            final List<org.bukkit.entity.EntitySnapshot> spawnQueue = queue;
 
             Location spawnLocation = world.getBlockAt(pos.x(), pos.y(), pos.z()).getLocation().add(0.5, 1, 0.5);
-            int queueSize = queue.size();
+            int queueSize = spawnQueue.size();
             int[] index = {0};
             BukkitTask[] task = new BukkitTask[1];
             task[0] = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
-                if (index[0] >= queue.size()) {
+                if (index[0] >= spawnQueue.size()) {
                     trialSpawnTasks.remove(key);
                     task[0].cancel();
+                    if (onComplete != null) onComplete.run();
                     return;
                 }
-                Entity entity = queue.get(index[0]++).createEntity(spawnLocation);
-                if (entity != null) tagEntity(entity, trialId);
+                Entity entity = spawnQueue.get(index[0]++).createEntity(spawnLocation);
+                if (entity != null) {
+                    tagEntity(entity, trialId);
+                    if (onSpawn != null) onSpawn.accept(entity);
+                }
             }, 0L, 5L);
             trialSpawnTasks.put(key, task[0]);
             return queueSize;
+        }
+
+        @Override
+        public void cancelExactTrial(String worldName, BlockPos pos) {
+            BukkitTask task = trialSpawnTasks.remove(locationKey(worldName, pos));
+            if (task != null) task.cancel();
         }
 
         @Override

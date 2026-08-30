@@ -7,6 +7,7 @@ import org.bukkit.inventory.ItemStack;
 import org.jspecify.annotations.Nullable;
 
 import java.util.List;
+import java.util.function.Consumer;
 
 /** Bukkit operations needed by the trial-spawner runtime. */
 public interface TrialSpawners {
@@ -20,6 +21,13 @@ public interface TrialSpawners {
 
     /** Cancel the native spawn and start a deterministic shuffled egg queue. */
     int startExactTrial(String worldName, BlockPos pos, String trialId);
+
+    /** Start exactly {@code amount} configured mobs and report each created entity. */
+    int startExactTrial(String worldName, BlockPos pos, String trialId, int amount,
+                        Consumer<Entity> onSpawn, Runnable onComplete);
+
+    /** Stop a queued exact-trial spawn without changing the configured trial data. */
+    void cancelExactTrial(String worldName, BlockPos pos);
 
     /** Configure a paired vault with the items available from its loot source. */
     void configureVault(String worldName, BlockPos pos, List<ItemStack> loot);

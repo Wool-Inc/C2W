@@ -24,6 +24,7 @@ import net.klaaswhite.c2w.adapter.managers.MarkerManager;
 import net.klaaswhite.c2w.adapter.managers.PlayerManager;
 import net.klaaswhite.c2w.adapter.managers.ResourceManager;
 import net.klaaswhite.c2w.adapter.managers.ScoreboardManager;
+import net.klaaswhite.c2w.adapter.managers.SpawnerManager;
 import net.klaaswhite.c2w.adapter.managers.StructureCreationManager;
 import net.klaaswhite.c2w.adapter.managers.TeamSelectionManager;
 import net.klaaswhite.c2w.adapter.managers.TrialSpawnerManager;
@@ -68,15 +69,18 @@ public class App implements AutoCloseable {
         MinecraftManager mc = new BukkitMinecraftManager(plugin);
         this.managers.mc = mc;
         ((BukkitMinecraftManager) mc).setEventManager(this.managers.eventManager);
+        var scheduler = new BukkitWoolTimerScheduler(plugin);
 
         this.managers.worldManager = new WorldManager(plugin, mc);
 
         // Heartbeat that pins world time/weather and grants every player night vision.
         this.managers.environmentManager = new EnvironmentManager(
-                this.managers.worldManager, mc, new BukkitWoolTimerScheduler(plugin),
+            this.managers.worldManager, mc, scheduler,
                 PotionEffectType.NIGHT_VISION);
 
         this.managers.entityManager = new EntityManager(this.managers.eventManager);
+        this.managers.spawnerManager = new SpawnerManager(
+            this.managers.eventManager, mc, scheduler);
         this.managers.playerManager = new PlayerManager(this.managers, mc);
 
         // Team selection: walking onto a draft-world platform assigns the player's team.
@@ -88,7 +92,7 @@ public class App implements AutoCloseable {
 
         // WoolTimer uses Scheduler interface instead of ServerOps — must be
         // created before MarkerManager (which passes it to MarkerEngine → Wool).
-        WoolTimer woolTimer = new WoolTimer(new BukkitWoolTimerScheduler(plugin));
+        WoolTimer woolTimer = new WoolTimer(scheduler);
         this.managers.woolTimer = woolTimer;
 
         this.managers.markerManager = new MarkerManager(this.managers, this.managers.eventManager, mc);
@@ -108,7 +112,7 @@ public class App implements AutoCloseable {
                 plugin, this.managers.eventManager, this.managers.worldManager,
                 structureTypeConfig, dataFolder, mc);
             this.managers.trialSpawnerManager = new TrialSpawnerManager(
-                this.managers.eventManager, mc, structureTypeConfig);
+                this.managers.eventManager, mc, structureTypeConfig, this.managers.spawnerManager);
         this.managers.layoutEditorManager = new LayoutEditorManager(
                 plugin, this.managers.eventManager, this.managers.worldManager,
                 this.managers.structureManager, structureTypeConfig, mc, dataFolder);
@@ -161,6 +165,7 @@ public class App implements AutoCloseable {
         closeables.add(this.managers.layoutEditorManager);
         closeables.add(this.managers.structureCreationManager);
         closeables.add(this.managers.resourceManager);
+        closeables.add(this.managers.spawnerManager);
         closeables.add(this.managers.trialSpawnerManager);
         closeables.add(this.managers.gameManager);
         closeables.add(this.managers.scoreboardManager);
@@ -214,6 +219,7 @@ public class App implements AutoCloseable {
         this.managers.structureCreationManager = null;
         this.managers.resourceManager = null;
         this.managers.trialSpawnerManager = null;
+        this.managers.spawnerManager = null;
         this.managers.worldManager = null;
         this.managers.environmentManager = null;
         this.managers.gameManager = null;

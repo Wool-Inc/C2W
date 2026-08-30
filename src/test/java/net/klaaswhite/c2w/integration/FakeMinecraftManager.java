@@ -422,6 +422,13 @@ public class FakeMinecraftManager implements MinecraftManager {
         @Override public void configureSpawner(String worldName, BlockPos pos,
                                java.util.List<org.bukkit.inventory.ItemStack> spawnEggs) {}
         @Override public int startExactTrial(String worldName, BlockPos pos, String trialId) { return 0; }
+        @Override public int startExactTrial(String worldName, BlockPos pos, String trialId, int amount,
+                                             java.util.function.Consumer<org.bukkit.entity.Entity> onSpawn,
+                                             Runnable onComplete) {
+            if (onComplete != null) onComplete.run();
+            return 0;
+        }
+        @Override public void cancelExactTrial(String worldName, BlockPos pos) {}
         @Override public void configureVault(String worldName, BlockPos pos,
                              java.util.List<org.bukkit.inventory.ItemStack> loot) {}
         @Override public boolean claimVault(Player player, String worldName, BlockPos pos) { return false; }

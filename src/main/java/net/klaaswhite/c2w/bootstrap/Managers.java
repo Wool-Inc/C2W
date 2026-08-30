@@ -12,6 +12,7 @@ import net.klaaswhite.c2w.adapter.managers.GameManager;
 import net.klaaswhite.c2w.adapter.managers.MarkerManager;
 import net.klaaswhite.c2w.adapter.managers.ResourceManager;
 import net.klaaswhite.c2w.adapter.managers.ScoreboardManager;
+import net.klaaswhite.c2w.adapter.managers.SpawnerManager;
 import net.klaaswhite.c2w.adapter.managers.StructureCreationManager;
 import net.klaaswhite.c2w.adapter.managers.TeamSelectionManager;
 import net.klaaswhite.c2w.adapter.managers.TrialSpawnerManager;
@@ -51,6 +52,7 @@ public class Managers {
     public LayoutEditorManager layoutEditorManager;
     public LayoutManager layoutManager;
     public ScoreboardManager scoreboardManager;
+    public SpawnerManager spawnerManager;
     public TrialSpawnerManager trialSpawnerManager;
 
     public Managers(JavaPlugin plugin) {

@@ -32,13 +32,16 @@ public class TrialSpawnerManager implements AutoCloseable {
     private final EventManager eventManager;
     private final MinecraftManager mc;
     private final FolderStructureTypeConfig structureTypeConfig;
+    private final SpawnerManager spawnerManager;
     private final Map<String, TrialRuntime> trialsByLocation = new HashMap<>();
 
     public TrialSpawnerManager(EventManager eventManager, MinecraftManager mc,
-                               FolderStructureTypeConfig structureTypeConfig) {
+                               FolderStructureTypeConfig structureTypeConfig,
+                               SpawnerManager spawnerManager) {
         this.eventManager = eventManager;
         this.mc = mc;
         this.structureTypeConfig = structureTypeConfig;
+        this.spawnerManager = spawnerManager;
 
         eventManager.registerInternalEvent(StartGameEvent.class, this::onStartGame);
         eventManager.registerInternalEvent(EndGameEvent.class, event -> clear());
@@ -93,8 +96,9 @@ public class TrialSpawnerManager implements AutoCloseable {
                 continue;
             }
 
-            trialsByLocation.put(locationKey(worldName, spawnerPos),
-                    new TrialRuntime(resourceId, worldName, spawnerPos, vaultPos));
+                TrialRuntime trial = new TrialRuntime(resourceId, worldName, spawnerPos, vaultPos);
+                trialsByLocation.put(locationKey(worldName, spawnerPos), trial);
+                spawnerManager.registerSource(worldName, spawnerPos, () -> startPendingMobs(trial));
         }
     }
 
@@ -111,12 +115,10 @@ public class TrialSpawnerManager implements AutoCloseable {
             trial.eligiblePlayers.clear();
             trial.claimedPlayers.clear();
             trial.vaultClaimedPlayers.clear();
+            trial.remainingMobs = 0;
         }
         trial.cycleComplete = false;
-        if (trial.remainingMobs > 0) return;
-        trial.remainingMobs = mc.trialSpawners().startExactTrial(
-                trial.worldName, trial.spawnerPos, trial.entityTag());
-        if (trial.remainingMobs == 0) trial.cycleComplete = true;
+        startPendingMobs(trial);
     }
 
     private void onEntityDeath(EntityDeathEvent event) {
@@ -125,7 +127,7 @@ public class TrialSpawnerManager implements AutoCloseable {
         TrialRuntime trial = findTrialByEntityTag(tag);
         if (trial == null) return;
 
-        trial.activeMobIds.remove(event.getEntity().getUniqueId());
+        if (!trial.activeMobIds.remove(event.getEntity().getUniqueId())) return;
         var causingEntity = event.getDamageSource().getCausingEntity();
         if (causingEntity instanceof Player player) {
             trial.eligiblePlayers.add(player.getUniqueId());
@@ -134,6 +136,38 @@ public class TrialSpawnerManager implements AutoCloseable {
         if (trial.remainingMobs == 0 && trial.activeMobIds.isEmpty()) {
             trial.cycleComplete = true;
         }
+    }
+
+    private void startPendingMobs(TrialRuntime trial) {
+        if (trial.cycleComplete || trial.spawning) return;
+
+        int amount = trial.remainingMobs == 0
+                ? Integer.MAX_VALUE
+                : trial.remainingMobs - trial.activeMobIds.size();
+        if (amount <= 0) return;
+
+        trial.spawning = true;
+        int started = mc.trialSpawners().startExactTrial(
+                trial.worldName, trial.spawnerPos, trial.entityTag(), amount,
+                entity -> onTrialMobSpawn(trial, entity),
+                () -> trial.spawning = false);
+        if (trial.remainingMobs == 0) trial.remainingMobs = started;
+        if (started == 0) {
+            trial.spawning = false;
+            trial.cycleComplete = true;
+        }
+    }
+
+    private void onTrialMobSpawn(TrialRuntime trial, org.bukkit.entity.Entity entity) {
+        trial.activeMobIds.add(entity.getUniqueId());
+        spawnerManager.trackEntity(trial.worldName, trial.spawnerPos, entity,
+                removed -> onTrialMobRemoved(trial, removed));
+    }
+
+    private void onTrialMobRemoved(TrialRuntime trial, org.bukkit.entity.Entity entity) {
+        if (!trial.activeMobIds.remove(entity.getUniqueId())) return;
+        mc.trialSpawners().cancelExactTrial(trial.worldName, trial.spawnerPos);
+        trial.spawning = false;
     }
 
     private void onPlayerInteract(PlayerInteractEvent event) {
@@ -211,6 +245,9 @@ public class TrialSpawnerManager implements AutoCloseable {
     }
 
     private void clear() {
+        for (TrialRuntime trial : trialsByLocation.values()) {
+            spawnerManager.unregisterSource(trial.worldName, trial.spawnerPos);
+        }
         trialsByLocation.clear();
         mc.trialSpawners().clearConfiguredTrialData();
     }
@@ -232,6 +269,7 @@ public class TrialSpawnerManager implements AutoCloseable {
         private final Set<UUID> vaultClaimedPlayers = new HashSet<>();
         private int remainingMobs;
         private boolean cycleComplete;
+        private boolean spawning;
 
         private TrialRuntime(String resourceId, String worldName, BlockPos spawnerPos, BlockPos vaultPos) {
             this.resourceId = resourceId;
