@@ -170,6 +170,9 @@ public interface MinecraftManager extends net.klaaswhite.c2w.domain.ops.Minecraf
         /** Toggle the natural mob spawning game rule. */
         void setDoMobSpawning(String worldName, boolean enabled);
 
+        /** Set the world's difficulty. */
+        void setDifficulty(String worldName, org.bukkit.Difficulty difficulty);
+
         /** Set whether it is currently raining (storming) in the world. */
         void setStorm(String worldName, boolean storm);
 

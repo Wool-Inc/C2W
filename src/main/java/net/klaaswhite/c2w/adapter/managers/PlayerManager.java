@@ -14,10 +14,13 @@ import net.klaaswhite.c2w.domain.events.PreviewRequestEvent;
 import net.klaaswhite.c2w.domain.events.ResetEvent;
 import net.klaaswhite.c2w.bootstrap.world.ManagedWorld;
 import org.bukkit.World;
+import org.bukkit.Location;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
+import org.bukkit.event.entity.FoodLevelChangeEvent;
 import org.bukkit.event.player.PlayerChangedWorldEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.event.player.PlayerRespawnEvent;
 
 import org.jspecify.annotations.Nullable;
 import java.util.Hashtable;
@@ -50,6 +53,8 @@ public class PlayerManager implements AutoCloseable {
         eventManager.registerInternalEvent(ResetEvent.class, this::onReset);
         eventManager.registerMinecraftEvent(PlayerJoinEvent.class, this::onNewPlayer);
         eventManager.registerMinecraftEvent(PlayerChangedWorldEvent.class, this::onPlayerChangedWorld);
+        eventManager.registerMinecraftEvent(PlayerRespawnEvent.class, this::onPlayerRespawn);
+        eventManager.registerMinecraftEvent(FoodLevelChangeEvent.class, this::onFoodLevelChange);
 
         this.playersByBukkitPlayer = new Hashtable<>();
     }
@@ -133,20 +138,100 @@ public class PlayerManager implements AutoCloseable {
      */
     public void onPlayerChangedWorld(PlayerChangedWorldEvent event) {
         var player = event.getPlayer();
-        if (!isInLobbyWorld(player)) return;
+        if (isInLobbyWorld(player)) {
+            resetVitals(player.getName());
+        } else if (isInDraftWorld(player)) {
+            resetVitals(player.getName());
+        } else {
+            return;
+        }
         var managed = playersByBukkitPlayer.get(player);
         if (managed != null) {
             removeFromTeam(managed);
         }
     }
 
+    public void onPlayerRespawn(PlayerRespawnEvent event) {
+        var player = event.getPlayer();
+        var worldName = player.getWorld().getName();
+
+        if (isLobbyWorld(worldName) || isDraftWorld(worldName)) {
+            routeRespawnToLobby(event);
+            return;
+        }
+
+        var game = managers.worldManager != null ? managers.worldManager.getGameWorld() : null;
+        if (game == null || !game.getName().equals(worldName)) return;
+
+        var managed = playersByBukkitPlayer.get(player);
+        var team = managed != null ? managed.getTeam() : null;
+        if (team == null || SPECTATOR_TEAM_NAME.equalsIgnoreCase(team.teamName)) {
+            routeRespawnToLobby(event);
+            return;
+        }
+
+        var spawn = teamSpawn(team.teamName);
+        if (spawn != null) {
+            setRespawnEventLocation(event, spawn, game.getWorld());
+            mc.players().setRespawnLocation(player.getName(), spawn, game.getName(), true);
+        }
+    }
+
+    public void onFoodLevelChange(FoodLevelChangeEvent event) {
+        var worldName = event.getEntity().getWorld().getName();
+        if (!isLobbyWorld(worldName) && !isDraftWorld(worldName)) return;
+
+        event.setCancelled(true);
+        resetVitals(event.getEntity().getName());
+    }
+
     private boolean isInLobbyWorld(Player player) {
+        return player != null && isLobbyWorld(player.getWorld().getName());
+    }
+
+    private boolean isInDraftWorld(Player player) {
+        return player != null && isDraftWorld(player.getWorld().getName());
+    }
+
+    private boolean isLobbyWorld(String worldName) {
         var wm = managers.worldManager;
-        if (wm == null) return false;
-        var lobby = wm.getLobbyWorld();
-        if (lobby == null || lobby.getWorld() == null) return false;
-        var current = player.getWorld();
-        return current != null && current.getName().equals(lobby.getName());
+        var lobby = wm != null ? wm.getLobbyWorld() : null;
+        return lobby != null && lobby.getName().equals(worldName);
+    }
+
+    private boolean isDraftWorld(String worldName) {
+        var wm = managers.worldManager;
+        var draft = wm != null ? wm.getDraftWorld() : null;
+        return draft != null && draft.getName().equals(worldName);
+    }
+
+    private void resetVitals(String playerName) {
+        mc.players().setHealth(playerName, 20.0);
+        mc.players().setFoodLevel(playerName, 20);
+        mc.players().setSaturation(playerName, 20.0f);
+    }
+
+    private void routeRespawnToLobby(PlayerRespawnEvent event) {
+        var lobby = managers.worldManager != null ? managers.worldManager.getLobbyWorld() : null;
+        if (lobby == null || lobby.getWorld() == null) return;
+
+        var spawn = lobby.getSpawnPos();
+        setRespawnEventLocation(event, spawn, lobby.getWorld());
+        mc.players().setGameMode(event.getPlayer().getName(), "SURVIVAL");
+        mc.players().setRespawnLocation(event.getPlayer().getName(), spawn, lobby.getName(), true);
+        resetVitals(event.getPlayer().getName());
+    }
+
+    private void setRespawnEventLocation(PlayerRespawnEvent event, BlockPos pos, World world) {
+        event.setRespawnLocation(new Location(world, pos.x() + 0.5, pos.y(), pos.z() + 0.5));
+    }
+
+    private @Nullable BlockPos teamSpawn(String teamName) {
+        var gameManager = managers.gameManager;
+        var game = managers.worldManager != null ? managers.worldManager.getGameWorld() : null;
+        if (gameManager == null || game == null) return null;
+        var spawn = gameManager.getSpawnPointForTeam(teamName);
+        return spawn != null ? spawn : game.getSpawnPos();
     }
 
     /** Remove a single player from their current team, both model and scoreboard. */
@@ -256,7 +341,9 @@ public class PlayerManager implements AutoCloseable {
             if (draftWorld != null) {
                 // Reset to survival so the joining player isn't stuck in spectator.
                 mc.players().setGameMode(playerName, "SURVIVAL");
+                resetVitals(playerName);
                 mc.players().teleportToWorld(playerName, draftWorld.getSpawnPos(), draftWorld.getName());
+                setLobbyRespawn(playerName);
                 mc.server().broadcastMessage("Player " + playerName + " joined during draft phase and was sent to draft world.");
             }
             return;
@@ -268,11 +355,13 @@ public class PlayerManager implements AutoCloseable {
                 // Reset to survival so players waiting in the lobby aren't stuck in spectator,
                 // and drop them from any game team so nobody carries it into the lobby.
                 mc.players().setGameMode(playerName, "SURVIVAL");
+                resetVitals(playerName);
                 var managed = playersByBukkitPlayer.get(player);
                 if (managed != null) {
                     removeFromTeam(managed);
                 }
                 mc.players().teleportToWorld(playerName, lobby.getSpawnPos(), lobby.getName());
+                setLobbyRespawn(playerName);
             }
         }
     }
@@ -284,16 +373,74 @@ public class PlayerManager implements AutoCloseable {
             // Reset to survival so a player who was a spectator in a previous
             // game doesn't stay in spectator mode in the draft world.
             mc.players().setGameMode(playerName, "SURVIVAL");
+            resetVitals(playerName);
             mc.players().teleportToWorld(playerName, draft.getSpawnPos(), draft.getName());
+            setLobbyRespawn(playerName);
+        }
+    }
+
+    private void setLobbyRespawn(String playerName) {
+        var lobby = managers.worldManager != null ? managers.worldManager.getLobbyWorld() : null;
+        if (lobby != null) {
+            mc.players().setRespawnLocation(playerName, lobby.getSpawnPos(), lobby.getName(), true);
+        }
+    }
+
+    /** Apply a team change to an online player, including game-world routing. */
+    public void changeTeam(ManagedPlayer player, ManagedTeam team) {
+        var previous = player.getTeam();
+        if (previous != null) {
+            mc.scoreboards().removePlayerFromTeam(player.getPlayer().getName(), previous.teamName);
+        }
+        player.setTeam(team);
+        if (team != null) {
+            mc.scoreboards().addPlayerToTeam(player.getPlayer().getName(), team.teamName);
+        }
+        onTeamChanged(player);
+    }
+
+    /** Reapply game-world routing after a team mutation made by another adapter. */
+    public void onTeamChanged(ManagedPlayer player) {
+        var gameManager = managers.gameManager;
+        var game = managers.worldManager != null ? managers.worldManager.getGameWorld() : null;
+        if (gameManager == null || game == null || !gameManager.isGameInProgress()) return;
+        var playerName = player.getPlayer().getName();
+        if (!game.getName().equals(mc.players().getWorldName(playerName))) return;
+
+        var team = player.getTeam();
+        var spectator = team == null || SPECTATOR_TEAM_NAME.equalsIgnoreCase(team.teamName);
+        var target = spectator ? game.getSpawnPos() : teamSpawn(team.teamName);
+        if (target == null) return;
+
+        mc.players().setGameMode(playerName, spectator ? "SPECTATOR" : "SURVIVAL");
+        mc.players().teleportToWorld(playerName, target, game.getName());
+        if (spectator) {
+            setLobbyRespawn(playerName);
+        } else {
+            mc.players().setRespawnLocation(playerName, target, game.getName(), true);
+        }
+    }
+
+    public void syncTeamChanges() {
+        for (var player : registry.getAllPlayers()) {
+            onTeamChanged(player);
         }
     }
 
     public void addPlayersToTeam(String teamName, Iterable<String> players) {
         registry.addPlayersToTeam(teamName, players);
+        for (var playerName : players) {
+            var player = registry.getPlayer(playerName);
+            if (player != null) onTeamChanged(player);
+        }
     }
 
     public void removePlayersFromTeam(String teamName, Iterable<String> players) {
         registry.removePlayersFromTeam(teamName, players);
+        for (var playerName : players) {
+            var player = registry.getPlayer(playerName);
+            if (player != null) onTeamChanged(player);
+        }
     }
 
     public PlayerRegistry getPlayerRegistry() {

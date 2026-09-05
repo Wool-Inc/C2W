@@ -385,7 +385,7 @@ public class C2WCommand extends BaseCommand {
             player.sendMessage("Player '" + targetName + "' not found.");
             return false;
         }
-        target.setTeam(team);
+        playerManager.changeTeam(target, team);
         player.sendMessage("Added " + targetName + " to " + teamName + " team.");
         return true;
     }
@@ -407,9 +407,10 @@ public class C2WCommand extends BaseCommand {
         }
         var specTeam = ManagedTeam.teams.get(PlayerManager.SPECTATOR_TEAM_NAME);
         if (specTeam != null) {
-            target.setTeam(specTeam);
+            playerManager.changeTeam(target, specTeam);
         } else {
             target.removeTeam(target.getTeam());
+            playerManager.onTeamChanged(target);
         }
         player.sendMessage("Moved " + targetName + " to Spectator.");
         return true;
@@ -437,6 +438,7 @@ public class C2WCommand extends BaseCommand {
 
         var registry = playerManager.getPlayerRegistry();
         registry.balanceTeams();
+        playerManager.syncTeamChanges();
 
         var redCount = registry.getPlayerCountByTeam("Red");
         var blueCount = registry.getPlayerCountByTeam("Blue");

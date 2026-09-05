@@ -61,6 +61,7 @@ public class TeamSelectionManager implements AutoCloseable {
         }
         managedPlayer.setTeam(team);
         mc.scoreboards().addPlayerToTeam(player.getName(), teamName);
+        playerManager.onTeamChanged(managedPlayer);
 
         player.sendMessage("You joined the " + teamName + " team.");
     }

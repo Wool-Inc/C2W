@@ -408,6 +408,14 @@ public class BukkitMinecraftManager implements MinecraftManager, AutoCloseable {
         }
 
         @Override
+        public void setSaturation(String playerName, float saturation) {
+            Player player = Bukkit.getPlayer(playerName);
+            if (player != null) {
+                player.setSaturation(saturation);
+            }
+        }
+
+        @Override
         public void setWoolDisplay(String playerName, ItemStackRef item) {
             Player player = Bukkit.getPlayer(playerName);
             if (player == null) return;
@@ -742,6 +750,14 @@ public class BukkitMinecraftManager implements MinecraftManager, AutoCloseable {
             World world = Bukkit.getWorld(worldName);
             if (world != null && MOB_SPAWNING_RULE != null) {
                 world.setGameRule(MOB_SPAWNING_RULE, enabled);
+            }
+        }
+
+        @Override
+        public void setDifficulty(String worldName, org.bukkit.Difficulty difficulty) {
+            World world = Bukkit.getWorld(worldName);
+            if (world != null) {
+                world.setDifficulty(difficulty);
             }
         }
 

@@ -68,6 +68,9 @@ public interface Players {
     /** Set the player's food level (0–20). */
     void setFoodLevel(String playerName, int food);
 
+    /** Set the player's saturation level (0–20). */
+    void setSaturation(String playerName, float saturation);
+
     /**
      * Display the given item above the player's head, or clear it if {@code item}
      * is empty. The item is shown on a hidden, small armor stand that rides as a

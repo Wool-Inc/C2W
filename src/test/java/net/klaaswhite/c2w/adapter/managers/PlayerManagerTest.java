@@ -13,10 +13,13 @@ import net.klaaswhite.c2w.domain.model.ManagedPlayer;
 import net.klaaswhite.c2w.domain.model.ManagedTeam;
 import net.klaaswhite.c2w.domain.model.TeamColor;
 import org.bukkit.World;
+import org.bukkit.Location;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scoreboard.Scoreboard;
 import org.bukkit.scoreboard.Team;
+import org.bukkit.event.entity.FoodLevelChangeEvent;
+import org.bukkit.event.player.PlayerRespawnEvent;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -351,6 +354,83 @@ class PlayerManagerTest {
 
         assertEquals("Red", manager.getPlayer("Alice").getTeam().teamName);
         verify(scoreboards, never()).removePlayerFromTeam(anyString(), anyString());
+    }
+
+    @Test
+    @DisplayName("lobby hunger is cancelled and restored to full saturation")
+    void lobbyHungerIsLocked() {
+        var manager = createManager();
+        var worldManager = mock(WorldManager.class);
+        managers.worldManager = worldManager;
+        var lobbyWorld = mock(World.class);
+        when(lobbyWorld.getName()).thenReturn("c2w_lobby");
+        var lobby = mock(ManagedWorld.class);
+        when(lobby.getName()).thenReturn("c2w_lobby");
+        when(worldManager.getLobbyWorld()).thenReturn(lobby);
+
+        var player = mock(Player.class);
+        when(player.getName()).thenReturn("Alice");
+        when(player.getWorld()).thenReturn(lobbyWorld);
+        var event = new FoodLevelChangeEvent(player, 12);
+
+        manager.onFoodLevelChange(event);
+
+        assertTrue(event.isCancelled());
+        verify(players).setFoodLevel("Alice", 20);
+        verify(players).setSaturation("Alice", 20.0f);
+    }
+
+    @Test
+    @DisplayName("dying in the lobby respawns at the lobby spawn")
+    void lobbyRespawnUsesLobbySpawn() {
+        var manager = createManager();
+        var worldManager = mock(WorldManager.class);
+        managers.worldManager = worldManager;
+        var lobbyWorld = mock(World.class);
+        when(lobbyWorld.getName()).thenReturn("c2w_lobby");
+        var lobby = mock(ManagedWorld.class);
+        when(lobby.getName()).thenReturn("c2w_lobby");
+        when(lobby.getWorld()).thenReturn(lobbyWorld);
+        when(lobby.getSpawnPos()).thenReturn(new BlockPos(4, 65, -2));
+        when(worldManager.getLobbyWorld()).thenReturn(lobby);
+
+        var player = mock(Player.class);
+        when(player.getName()).thenReturn("Alice");
+        when(player.getWorld()).thenReturn(lobbyWorld);
+        var event = new PlayerRespawnEvent(player, new Location(lobbyWorld, 0, 0, 0), false);
+
+        manager.onPlayerRespawn(event);
+
+        assertEquals(new Location(lobbyWorld, 4.5, 65, -1.5), event.getRespawnLocation());
+        verify(players).setGameMode("Alice", "SURVIVAL");
+        verify(players).setRespawnLocation("Alice", new BlockPos(4, 65, -2), "c2w_lobby", true);
+    }
+
+    @Test
+    @DisplayName("switching teams in the game routes the player to the new spawn")
+    void gameTeamSwitchRoutesPlayer() {
+        var manager = createManager();
+        var worldManager = mock(WorldManager.class);
+        var gameManager = mock(GameManager.class);
+        managers.worldManager = worldManager;
+        managers.gameManager = gameManager;
+
+        var gameWorld = mock(ManagedWorld.class);
+        when(gameWorld.getName()).thenReturn("c2w_game");
+        when(gameWorld.getSpawnPos()).thenReturn(new BlockPos(0, 65, 0));
+        when(worldManager.getGameWorld()).thenReturn(gameWorld);
+        when(gameManager.isGameInProgress()).thenReturn(true);
+        when(gameManager.getSpawnPointForTeam("Red")).thenReturn(new BlockPos(10, 64, 3));
+        when(players.getWorldName("Alice")).thenReturn("c2w_game");
+
+        var player = registerPlayer(manager, "Alice");
+        manager.getPlayerRegistry().ensureTeams();
+        var red = ManagedTeam.teams.get("Red");
+        manager.changeTeam(manager.getPlayer(player), red);
+
+        verify(players).setGameMode("Alice", "SURVIVAL");
+        verify(players).teleportToWorld("Alice", new BlockPos(10, 64, 3), "c2w_game");
+        verify(players).setRespawnLocation("Alice", new BlockPos(10, 64, 3), "c2w_game", true);
     }
 
     // ---------------------------------------------------------------

@@ -2,6 +2,7 @@ package net.klaaswhite.c2w.adapter.managers;
 
 import net.klaaswhite.c2w.adapter.minecraft.MinecraftManager;
 import net.klaaswhite.c2w.domain.game.WoolTimer;
+import org.bukkit.Difficulty;
 import org.bukkit.World;
 import org.bukkit.potion.PotionEffectType;
 
@@ -25,6 +26,7 @@ public class EnvironmentManager implements AutoCloseable {
     /** Time of day in ticks since dawn: 6000 = noon, 18000 = midnight. */
     public static final long NOON = 6000;
     public static final long MIDNIGHT = 18000;
+    private static final String STRUCTURE_CREATION_WORLD_PREFIX = "c2w_create_";
 
     /** Effect duration long enough to behave as permanent. */
     private static final int PERMANENT_EFFECT_DURATION = Integer.MAX_VALUE;
@@ -58,6 +60,11 @@ public class EnvironmentManager implements AutoCloseable {
             mc.worlds().setTime(worldName, isGameWorld ? MIDNIGHT : NOON);
             mc.worlds().setDoDaylightCycle(worldName, false);
             mc.worlds().setDoMobSpawning(worldName, false);
+            if (isGameWorld) {
+                mc.worlds().setDifficulty(worldName, Difficulty.HARD);
+            } else if (worldName.startsWith(STRUCTURE_CREATION_WORLD_PREFIX)) {
+                mc.worlds().setDifficulty(worldName, Difficulty.PEACEFUL);
+            }
             mc.worlds().setStorm(worldName, false);
             mc.worlds().setThundering(worldName, false);
             mc.worlds().setDoWeatherCycle(worldName, false);

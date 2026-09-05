@@ -306,6 +306,9 @@ public class GameManager implements AutoCloseable {
         var gameWorld = worldManager.getGameWorld();
         var teleportLogger = java.util.logging.Logger.getLogger("C2W");
         for (String playerName : mc.server().getOnlinePlayerNames()) {
+            mc.players().setHealth(playerName, 20.0);
+            mc.players().setFoodLevel(playerName, 20);
+            mc.players().setSaturation(playerName, 20.0f);
             String playerWorld = mc.players().getWorldName(playerName);
             teleportLogger.info("[GameManager.start] processing " + playerName
                     + " world=" + playerWorld + " draft=" + draftName);

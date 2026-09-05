@@ -158,6 +158,7 @@ public class FakeMinecraftManager implements MinecraftManager {
         @Override public void removePotionEffects(String playerName) {}
         @Override public void setHealth(String playerName, double health) {}
         @Override public void setFoodLevel(String playerName, int food) {}
+        @Override public void setSaturation(String playerName, float saturation) {}
         @Override public void setWoolDisplay(String playerName, ItemStackRef item) {
             var p = players.get(playerName);
             if (p != null) p.woolDisplay = item;
@@ -222,6 +223,7 @@ public class FakeMinecraftManager implements MinecraftManager {
         @Override public void setTime(String worldName, long time) {}
         @Override public void setDoDaylightCycle(String worldName, boolean enabled) {}
         @Override public void setDoMobSpawning(String worldName, boolean enabled) {}
+        @Override public void setDifficulty(String worldName, org.bukkit.Difficulty difficulty) {}
         @Override public void setStorm(String worldName, boolean storm) {}
         @Override public void setThundering(String worldName, boolean thundering) {}
         @Override public void setDoWeatherCycle(String worldName, boolean enabled) {}

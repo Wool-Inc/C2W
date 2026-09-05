@@ -5,6 +5,7 @@ import net.klaaswhite.c2w.adapter.minecraft.Players;
 import net.klaaswhite.c2w.adapter.minecraft.Server;
 import net.klaaswhite.c2w.bootstrap.world.ManagedWorld;
 import net.klaaswhite.c2w.domain.game.WoolTimer;
+import org.bukkit.Difficulty;
 import org.bukkit.World;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -67,7 +68,9 @@ class EnvironmentManagerTest {
         when(lobby.getName()).thenReturn("c2w_lobby");
         World gameWorld = mock(World.class);
         when(gameWorld.getName()).thenReturn("c2w_game");
-        when(worlds.getLoadedWorlds()).thenReturn(List.of(lobby, gameWorld));
+        World structureWorld = mock(World.class);
+        when(structureWorld.getName()).thenReturn("c2w_create_dungeon_1");
+        when(worlds.getLoadedWorlds()).thenReturn(List.of(lobby, gameWorld, structureWorld));
 
         when(server.getOnlinePlayerNames()).thenReturn(List.of("Alice", "Bob"));
         when(players.hasPotionEffect(anyString(), any())).thenReturn(false);
@@ -112,9 +115,20 @@ class EnvironmentManagerTest {
         verify(worlds).setTime("c2w_game", EnvironmentManager.MIDNIGHT);
         verify(worlds).setDoDaylightCycle("c2w_game", false);
         verify(worlds).setDoMobSpawning("c2w_game", false);
+        verify(worlds).setDifficulty("c2w_game", Difficulty.HARD);
         verify(worlds).setStorm("c2w_game", false);
         verify(worlds).setThundering("c2w_game", false);
         verify(worlds).setDoWeatherCycle("c2w_game", false);
+        manager.close();
+    }
+
+    @Test
+    @DisplayName("structure creation worlds are kept peaceful")
+    void structureCreationWorldsArePeaceful() {
+        var manager = newManager();
+        scheduler.scheduledTasks.get(0).run();
+
+        verify(worlds).setDifficulty("c2w_create_dungeon_1", Difficulty.PEACEFUL);
         manager.close();
     }
 
