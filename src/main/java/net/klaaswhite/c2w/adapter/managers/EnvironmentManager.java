@@ -19,7 +19,8 @@ import org.bukkit.potion.PotionEffectType;
  * Runs a repeating heartbeat on the server thread (once per second). The world
  * gamerules {@code doDaylightCycle}, {@code doWeatherCycle}, and
  * {@code doMobSpawning} are disabled so the pinned time/weather hold permanently
- * and mobs only appear through configured spawners.
+ * and mobs only appear through configured spawners. Keep inventory is enabled in
+ * every loaded world.
  */
 public class EnvironmentManager implements AutoCloseable {
 
@@ -60,6 +61,7 @@ public class EnvironmentManager implements AutoCloseable {
             mc.worlds().setTime(worldName, isGameWorld ? MIDNIGHT : NOON);
             mc.worlds().setDoDaylightCycle(worldName, false);
             mc.worlds().setDoMobSpawning(worldName, false);
+            mc.worlds().setKeepInventory(worldName, true);
             if (isGameWorld) {
                 mc.worlds().setDifficulty(worldName, Difficulty.HARD);
             } else if (worldName.startsWith(STRUCTURE_CREATION_WORLD_PREFIX)) {

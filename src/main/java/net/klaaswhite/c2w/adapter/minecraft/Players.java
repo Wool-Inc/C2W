@@ -65,6 +65,9 @@ public interface Players {
     /** Set the player's health (0–20). */
     void setHealth(String playerName, double health);
 
+    /** Immediately respawn the player without waiting for client death-screen input. */
+    void respawn(String playerName);
+
     /** Set the player's food level (0–20). */
     void setFoodLevel(String playerName, int food);
 

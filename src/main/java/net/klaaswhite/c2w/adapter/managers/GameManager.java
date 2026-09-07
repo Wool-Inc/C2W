@@ -300,7 +300,14 @@ public class GameManager implements AutoCloseable {
         // Clear selected layout after use
         this.selectedLayoutName = null;
 
-        eventManager.pushInternalEvent(new StartGameEvent(game.getName()));
+        int lowestIslandY = layout.getCells().stream()
+            .mapToInt(cell -> cell.worldPosition().y())
+            .min()
+            .orElse(StartGameEvent.NO_DEATH_PLANE);
+        int deathPlaneY = lowestIslandY == StartGameEvent.NO_DEATH_PLANE
+            ? StartGameEvent.NO_DEATH_PLANE
+            : lowestIslandY - 10;
+        eventManager.pushInternalEvent(new StartGameEvent(game.getName(), deathPlaneY));
 
         String draftName = worldManager.getDraftWorld().getName();
         var gameWorld = worldManager.getGameWorld();

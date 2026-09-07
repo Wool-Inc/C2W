@@ -121,7 +121,8 @@ public class App implements AutoCloseable {
                 this.managers.eventManager,
                 this.managers.markerManager,
                 this.managers.playerManager,
-                woolTimer
+            woolTimer,
+            mc
         );
 
         LayoutManager layoutManager = new LayoutManager(

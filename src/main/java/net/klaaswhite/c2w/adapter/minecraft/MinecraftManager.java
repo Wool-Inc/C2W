@@ -170,6 +170,9 @@ public interface MinecraftManager extends net.klaaswhite.c2w.domain.ops.Minecraf
         /** Toggle the natural mob spawning game rule. */
         void setDoMobSpawning(String worldName, boolean enabled);
 
+        /** Toggle the keep-inventory game rule. */
+        void setKeepInventory(String worldName, boolean enabled);
+
         /** Set the world's difficulty. */
         void setDifficulty(String worldName, org.bukkit.Difficulty difficulty);
 

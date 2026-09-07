@@ -13,6 +13,7 @@ import net.klaaswhite.c2w.domain.model.PlayerHandle;
 import net.klaaswhite.c2w.domain.model.TeamColor;
 import net.klaaswhite.c2w.domain.model.WoolColor;
 import org.bukkit.Location;
+import org.bukkit.World;
 import org.bukkit.entity.Player;
 import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
@@ -26,7 +27,10 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @DisplayName("BoundaryManager")
@@ -36,6 +40,8 @@ class BoundaryManagerTest {
     private MarkerManager markerManager;
     private PlayerManager playerManager;
     private WoolTimer woolTimer;
+    private MinecraftManager mc;
+    private Players players;
     private BoundaryManager boundaryManager;
 
     @BeforeEach
@@ -46,10 +52,13 @@ class BoundaryManagerTest {
         markerManager = mock(MarkerManager.class);
         playerManager = mock(PlayerManager.class);
         woolTimer = mock(WoolTimer.class);
+        mc = mock(MinecraftManager.class);
+        players = mock(Players.class);
+        when(mc.players()).thenReturn(players);
 
         when(markerManager.getMarker(anyString())).thenReturn(null);
 
-        boundaryManager = new BoundaryManager(eventManager, markerManager, playerManager, woolTimer);
+        boundaryManager = new BoundaryManager(eventManager, markerManager, playerManager, woolTimer, mc);
     }
 
     // --- Construction ---
@@ -184,6 +193,69 @@ class BoundaryManagerTest {
         assertDoesNotThrow(() -> boundaryManager.onPlayerMove(event));
     }
 
+    @Test
+    @DisplayName("onPlayerMove kills game-world players below the death plane")
+    void onPlayerMoveKillsBelowDeathPlane() {
+        var player = mock(Player.class);
+        var from = mock(Location.class);
+        var to = mock(Location.class);
+        var world = mock(World.class);
+        when(world.getName()).thenReturn("c2w_game");
+        when(to.getWorld()).thenReturn(world);
+        when(to.getY()).thenReturn(53.9);
+
+        var handle = mock(PlayerHandle.class);
+        when(handle.getUniqueId()).thenReturn(UUID.randomUUID());
+        when(handle.getName()).thenReturn("Alice");
+        when(handle.getDisplayName()).thenReturn("Alice");
+        var managedPlayer = new ManagedPlayer(handle);
+        when(playerManager.getPlayer(player)).thenReturn(managedPlayer);
+        when(player.getName()).thenReturn("Alice");
+
+        var event = mock(PlayerMoveEvent.class);
+        when(event.getFrom()).thenReturn(from);
+        when(event.getTo()).thenReturn(to);
+        when(event.getPlayer()).thenReturn(player);
+
+        boundaryManager.onStartGame(new StartGameEvent("c2w_game", 54));
+        boundaryManager.onPlayerMove(event);
+
+        org.mockito.Mockito.verify(players).setHealth("Alice", 0.0);
+    }
+
+    @Test
+    @DisplayName("onPlayerMove teleports players below the lobby and draft death plane")
+    void onPlayerMoveTeleportsBelowLobbyAndDraftDeathPlane() {
+        for (String worldName : new String[]{"c2w_lobby", "c2w_draft"}) {
+            var player = mock(Player.class);
+            var from = mock(Location.class);
+            var to = mock(Location.class);
+            var world = mock(World.class);
+            when(world.getName()).thenReturn(worldName);
+            when(world.getSpawnLocation()).thenReturn(new Location(world, 0, 65, 0));
+            when(to.getWorld()).thenReturn(world);
+            when(to.getY()).thenReturn(53.9);
+            when(player.getName()).thenReturn(worldName);
+
+            var handle = mock(PlayerHandle.class);
+            when(handle.getUniqueId()).thenReturn(UUID.randomUUID());
+            when(handle.getName()).thenReturn(worldName);
+            when(handle.getDisplayName()).thenReturn(worldName);
+            when(playerManager.getPlayer(player)).thenReturn(new ManagedPlayer(handle));
+
+            var event = mock(PlayerMoveEvent.class);
+            when(event.getFrom()).thenReturn(from);
+            when(event.getTo()).thenReturn(to);
+            when(event.getPlayer()).thenReturn(player);
+
+            boundaryManager.onPlayerMove(event);
+
+            verify(players).teleportToWorld(worldName, new BlockPos(0, 65, 0), worldName);
+        }
+
+        verify(players, never()).setHealth(anyString(), eq(0.0));
+    }
+
     // --- onPlayerDeath ---
 
     @Test
@@ -228,6 +300,30 @@ class BoundaryManagerTest {
         // dropOnDeath must clear the carrier, making the wool no longer carried.
         assertNull(managedPlayer.getCarry());
         assertFalse(wool.isCarried());
+    }
+
+    @Test
+    @DisplayName("onPlayerDeath immediately respawns game-world players")
+    void onPlayerDeathImmediatelyRespawnsGamePlayer() {
+        var player = mock(Player.class);
+        var world = mock(World.class);
+        when(player.getWorld()).thenReturn(world);
+        when(world.getName()).thenReturn("c2w_game");
+        when(player.getName()).thenReturn("Alice");
+        var handle = mock(PlayerHandle.class);
+        when(handle.getUniqueId()).thenReturn(UUID.randomUUID());
+        when(handle.getName()).thenReturn("Alice");
+        when(handle.getDisplayName()).thenReturn("Alice");
+        var managedPlayer = new ManagedPlayer(handle);
+        when(playerManager.getPlayer(player)).thenReturn(managedPlayer);
+
+        var event = mock(PlayerDeathEvent.class);
+        when(event.getEntity()).thenReturn(player);
+
+        boundaryManager.onStartGame(new StartGameEvent("c2w_game", 64));
+        boundaryManager.onPlayerDeath(event);
+
+        verify(players).respawn("Alice");
     }
 
     @Test

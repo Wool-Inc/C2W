@@ -8,7 +8,9 @@ import net.klaaswhite.c2w.domain.events.WoolCapturedEvent;
 import net.klaaswhite.c2w.domain.events.WoolDroppedEvent;
 import net.klaaswhite.c2w.domain.events.WoolPickedUpEvent;
 import net.klaaswhite.c2w.domain.model.DomainBoundingBox;
+import net.klaaswhite.c2w.domain.model.BlockPos;
 import net.klaaswhite.c2w.domain.model.ManagedTeam;
+import net.klaaswhite.c2w.adapter.minecraft.MinecraftManager;
 import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
@@ -17,16 +19,27 @@ import java.util.HashSet;
 
 public class BoundaryManager implements AutoCloseable {
 
+    private static final int LOBBY_DRAFT_DEATH_PLANE_Y = 54;
+
     private final EventManager eventManager;
     private final MarkerManager markerManager;
     private final PlayerManager playerManager;
+    private final MinecraftManager mc;
     private final BoundaryEngine engine;
+    private int deathPlaneY = StartGameEvent.NO_DEATH_PLANE;
+    private String gameWorldName;
 
     public BoundaryManager(EventManager eventManager, MarkerManager markerManager,
             PlayerManager playerManager, WoolTimer woolTimer) {
+        this(eventManager, markerManager, playerManager, woolTimer, null);
+    }
+
+    public BoundaryManager(EventManager eventManager, MarkerManager markerManager,
+            PlayerManager playerManager, WoolTimer woolTimer, MinecraftManager mc) {
         this.eventManager = eventManager;
         this.markerManager = markerManager;
         this.playerManager = playerManager;
+        this.mc = mc;
         this.engine = new BoundaryEngine(new WoolTimerAdapter(woolTimer));
 
         this.eventManager.registerMinecraftEvent(PlayerMoveEvent.class, this::onPlayerMove);
@@ -39,6 +52,8 @@ public class BoundaryManager implements AutoCloseable {
     }
 
     public void onStartGame(StartGameEvent event) {
+        this.gameWorldName = event.getGameWorldName();
+        this.deathPlaneY = event.getDeathPlaneY();
         engine.initialize(ManagedTeam.teams.values().stream()
                 .collect(java.util.stream.Collectors.toCollection(HashSet::new)));
 
@@ -60,8 +75,27 @@ public class BoundaryManager implements AutoCloseable {
     public void onPlayerMove(PlayerMoveEvent event) {
         var from = event.getFrom();
         var to = event.getTo();
+        if (to == null) return;
+
+        var toWorld = to.getWorld();
+        String worldName = toWorld == null ? null : toWorld.getName();
+        int playerDeathPlaneY = deathPlaneFor(worldName);
+        if (mc != null && playerDeathPlaneY != StartGameEvent.NO_DEATH_PLANE
+            && to.getY() < playerDeathPlaneY) {
+            String playerName = event.getPlayer().getName();
+            if (isLobbyOrDraftWorld(worldName) && toWorld != null) {
+                var spawn = toWorld.getSpawnLocation();
+                mc.players().teleportToWorld(playerName,
+                    new BlockPos(spawn.getBlockX(), spawn.getBlockY(), spawn.getBlockZ()),
+                        worldName);
+            } else {
+                mc.players().setHealth(playerName, 0.0);
+            }
+            return;
+        }
+
         var managedPlayer = this.playerManager.getPlayer(event.getPlayer());
-        if (to == null || managedPlayer == null) return;
+        if (managedPlayer == null) return;
 
         engine.onPlayerMove(
                 from.getX(), from.getY(), from.getZ(),
@@ -83,6 +117,25 @@ public class BoundaryManager implements AutoCloseable {
             wool.dropOnDeath(managedPlayer);
         }
         engine.removePlayer(managedPlayer);
+
+        var deathWorld = event.getEntity().getWorld();
+        if (mc != null && deathWorld != null
+            && deathPlaneFor(deathWorld.getName()) != StartGameEvent.NO_DEATH_PLANE) {
+            mc.players().respawn(event.getEntity().getName());
+        }
+    }
+
+    private int deathPlaneFor(String worldName) {
+        if (worldName == null) return StartGameEvent.NO_DEATH_PLANE;
+        if (gameWorldName != null && gameWorldName.equals(worldName)) return deathPlaneY;
+        if (isLobbyOrDraftWorld(worldName)) {
+            return LOBBY_DRAFT_DEATH_PLANE_Y;
+        }
+        return StartGameEvent.NO_DEATH_PLANE;
+    }
+
+    private boolean isLobbyOrDraftWorld(String worldName) {
+        return "c2w_lobby".equals(worldName) || "c2w_draft".equals(worldName);
     }
 
     /**

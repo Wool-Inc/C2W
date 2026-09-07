@@ -108,8 +108,10 @@ public class BukkitMinecraftManager implements MinecraftManager, AutoCloseable {
             resolveGameRule("ADVANCE_TIME", "DO_DAYLIGHT_CYCLE");
     private static final GameRule<Boolean> WEATHER_CYCLE_RULE =
             resolveGameRule("ADVANCE_WEATHER", "DO_WEATHER_CYCLE");
-        private static final GameRule<Boolean> MOB_SPAWNING_RULE =
+    private static final GameRule<Boolean> MOB_SPAWNING_RULE =
             resolveGameRule("SPAWN_MOBS", "DO_MOB_SPAWNING");
+    private static final GameRule<Boolean> KEEP_INVENTORY_RULE =
+            resolveGameRule("KEEP_INVENTORY");
 
     @SuppressWarnings("unchecked")
     private static @Nullable GameRule<Boolean> resolveGameRule(String... fieldNames) {
@@ -396,6 +398,14 @@ public class BukkitMinecraftManager implements MinecraftManager, AutoCloseable {
             Player player = Bukkit.getPlayer(playerName);
             if (player != null) {
                 player.setHealth(health);
+            }
+        }
+
+        @Override
+        public void respawn(String playerName) {
+            Player player = Bukkit.getPlayer(playerName);
+            if (player != null) {
+                Bukkit.getScheduler().runTask(plugin, player.spigot()::respawn);
             }
         }
 
@@ -750,6 +760,14 @@ public class BukkitMinecraftManager implements MinecraftManager, AutoCloseable {
             World world = Bukkit.getWorld(worldName);
             if (world != null && MOB_SPAWNING_RULE != null) {
                 world.setGameRule(MOB_SPAWNING_RULE, enabled);
+            }
+        }
+
+        @Override
+        public void setKeepInventory(String worldName, boolean enabled) {
+            World world = Bukkit.getWorld(worldName);
+            if (world != null && KEEP_INVENTORY_RULE != null) {
+                world.setGameRule(KEEP_INVENTORY_RULE, enabled);
             }
         }
 
