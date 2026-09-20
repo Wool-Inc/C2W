@@ -3,6 +3,8 @@ package net.klaaswhite.c2w.adapter.minecraft;
 import net.klaaswhite.c2w.domain.model.BlockPos;
 import org.jspecify.annotations.Nullable;
 
+import java.util.UUID;
+
 /**
  * Represents a single marker entity in the world.
  * <p>
@@ -12,6 +14,9 @@ import org.jspecify.annotations.Nullable;
  * {@link MarkerEntity} interface.
  */
 public interface MarkerEntity extends net.klaaswhite.c2w.domain.model.MarkerEntity {
+
+    /** Stable identity of the backing marker entity. */
+    UUID getUniqueId();
 
     /** Get the marker's current position in the world. */
     BlockPos getPosition();

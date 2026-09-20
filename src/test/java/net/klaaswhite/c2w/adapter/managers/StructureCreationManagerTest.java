@@ -18,6 +18,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.io.File;
+import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Map;
 
@@ -111,6 +112,7 @@ class StructureCreationManagerTest {
 
         // Create a lock file to simulate locked structure
         fs.createFile(new File(dataFolder, "structures/.lock_dungeon_room1").getAbsolutePath(), "");
+        when(worlds.getWorld("c2w_create_dungeon_room1")).thenReturn(mock(World.class));
 
         manager.createCreationWorld(player, "dungeon", "room1");
         verify(player).sendMessage(contains("locked by another player"));
@@ -144,6 +146,78 @@ class StructureCreationManagerTest {
         manager.createCreationWorld(player, "dungeon", "room1");
         verify(player).sendMessage(contains("Failed to create creation world"));
     }
+
+    @Test
+    @DisplayName("createCreationWorld sets the player to creative before teleporting")
+    void createCreationWorld_setsCreativeMode() {
+        var player = mock(Player.class);
+        when(player.getName()).thenReturn("TestPlayer");
+        when(player.getUniqueId()).thenReturn(java.util.UUID.randomUUID());
+        when(structureTypeConfig.getDimensions("dungeon")).thenReturn(new int[]{16, 16, 16});
+        var world = mock(World.class);
+        when(worlds.createVoidWorld("c2w_create_dungeon_room1", World.Environment.NORMAL)).thenReturn(world);
+        when(worlds.getWorld("c2w_create_dungeon_room1")).thenReturn(world);
+        var scheduler = mock(org.bukkit.scheduler.BukkitScheduler.class);
+        when(scheduler.runTaskTimer(any(), any(Runnable.class), anyLong(), anyLong()))
+                .thenReturn(mock(org.bukkit.scheduler.BukkitTask.class));
+
+        try (var bukkit = mockStatic(org.bukkit.Bukkit.class)) {
+            bukkit.when(org.bukkit.Bukkit::getScheduler).thenReturn(scheduler);
+            var manager = createManager();
+            assertSame(world, manager.createCreationWorld(player, "dungeon", "room1"));
+        }
+
+        verify(players).setGameMode("TestPlayer", "CREATIVE");
+        verify(players).teleportToWorld(eq("TestPlayer"), any(), eq("c2w_create_dungeon_room1"));
+    }
+
+        @Test
+        @DisplayName("generated lobby bootstrap captures a 100x100 footprint")
+        void bootstrapLobby_usesExpandedFootprint() throws Exception {
+        when(worlds.getWorld("c2w_lobby")).thenReturn(mock(World.class));
+        when(markers.getMarkerKey()).thenReturn("map_marker");
+        when(markers.getMarkersInWorld("c2w_lobby")).thenReturn(List.of());
+        when(markers.spawnMarker(eq("c2w_lobby"), any(BlockPos.class)))
+            .thenReturn(mock(net.klaaswhite.c2w.adapter.minecraft.MarkerEntity.class));
+        when(structures.createStructure(eq("c2w_lobby"), any(BlockPos.class), any(BlockPos.class)))
+            .thenReturn("lobby-structure");
+
+        var manager = createManager();
+        assertTrue(invokeBootstrap(manager, "lobby"));
+
+        verify(structures).createStructure("c2w_lobby",
+            new BlockPos(-54, 63, -54), new BlockPos(100, 64, 100));
+        }
+
+        @Test
+        @DisplayName("generated draft bootstrap captures a 100x100 footprint")
+        void bootstrapDraft_usesExpandedFootprint() throws Exception {
+        var draftWorld = mock(org.bukkit.World.class);
+        var managedDraft = mock(ManagedWorld.class);
+        when(managedDraft.getName()).thenReturn("c2w_draft");
+        when(worldManager.getDraftWorld()).thenReturn(managedDraft);
+        when(worldManager.createDraftWorld()).thenReturn(draftWorld);
+        when(worlds.getWorld("c2w_draft")).thenReturn(draftWorld);
+        when(markers.getMarkerKey()).thenReturn("map_marker");
+        when(markers.getMarkersInWorld("c2w_draft")).thenReturn(List.of());
+        when(markers.spawnMarker(eq("c2w_draft"), any(BlockPos.class)))
+            .thenReturn(mock(net.klaaswhite.c2w.adapter.minecraft.MarkerEntity.class));
+        when(structures.createStructure(eq("c2w_draft"), any(BlockPos.class), any(BlockPos.class)))
+            .thenReturn("draft-structure");
+
+        var manager = createManager();
+        assertTrue(invokeBootstrap(manager, "draft"));
+
+        verify(structures).createStructure("c2w_draft",
+            new BlockPos(-54, 63, -54), new BlockPos(100, 64, 100));
+        }
+
+        private boolean invokeBootstrap(StructureCreationManager manager, String id) throws Exception {
+        Method method = StructureCreationManager.class.getDeclaredMethod(
+            "bootstrapSpecialInstance", String.class, String.class);
+        method.setAccessible(true);
+        return (boolean) method.invoke(manager, "general", id);
+        }
 
     // ---------------------------------------------------------------
     // saveCreationWorld
@@ -187,6 +261,7 @@ class StructureCreationManagerTest {
 
         // Create lock file
         fs.createFile(new File(dataFolder, "structures/.lock_dungeon_room1").getAbsolutePath(), "");
+        when(worlds.getWorld("c2w_create_dungeon_room1")).thenReturn(mock(World.class));
 
         boolean result = manager.deleteCreationWorld(player, "dungeon", "room1");
         assertFalse(result);
@@ -219,8 +294,22 @@ class StructureCreationManagerTest {
     void isStructureLocked_locked() {
         var manager = createManager();
         fs.createFile(new File(dataFolder, "structures/.lock_dungeon_room1").getAbsolutePath(), "");
+        when(worlds.getWorld("c2w_create_dungeon_room1")).thenReturn(mock(World.class));
 
         assertTrue(manager.isStructureLocked("dungeon", "room1"));
+    }
+
+    @Test
+    @DisplayName("isStructureLocked clears a lock when its editor world no longer exists")
+    void isStructureLocked_clearsOrphanedLock() {
+        var manager = createManager();
+        File lock = new File(dataFolder, "structures/.lock_general_lobby");
+        fs.createFile(lock.getAbsolutePath(), "");
+        when(worlds.getWorld("c2w_lobby")).thenReturn(mock(World.class));
+        when(worlds.getWorld("c2w_create_general_lobby")).thenReturn(null);
+
+        assertFalse(manager.isStructureLocked("general", "lobby"));
+        assertFalse(fs.isFile(lock));
     }
 
     // ---------------------------------------------------------------

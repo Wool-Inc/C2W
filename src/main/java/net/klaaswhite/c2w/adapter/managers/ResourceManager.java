@@ -51,6 +51,7 @@ public class ResourceManager implements AutoCloseable {
 
     private final Map<String, ResourceSession> sessions = new HashMap<>();
     private final Map<String, BukkitTask> particleTasks = new HashMap<>();
+    private final Map<String, List<UUID>> visualizationArmorStands = new HashMap<>();
     private static final Logger log = Logger.getLogger(ResourceManager.class.getName());
 
     public ResourceManager(
@@ -82,6 +83,7 @@ public class ResourceManager implements AutoCloseable {
                 if (dims != null) {
                     startParticleBoundary(worldName, dims[0], dims[1], dims[2]);
                 }
+                mc.players().setGameMode(player.getName(), "CREATIVE");
                 mc.players().teleportToWorld(
                         player.getName(),
                         new BlockPos(0, 1, 0),
@@ -125,6 +127,7 @@ public class ResourceManager implements AutoCloseable {
             player.sendMessage("Structure type '" + typeName + "' has no dimensions defined. No boundary shown.");
         }
 
+        mc.players().setGameMode(player.getName(), "CREATIVE");
         mc.players().teleportToWorld(
                 player.getName(),
                 new BlockPos(0, 1, 0),
@@ -482,6 +485,49 @@ public class ResourceManager implements AutoCloseable {
         return false;
     }
 
+    public boolean toggleVisualization(String worldName, World world) {
+        var existing = visualizationArmorStands.remove(worldName);
+        if (existing != null) {
+            for (UUID id : existing) {
+                world.getEntitiesByClass(org.bukkit.entity.ArmorStand.class).stream()
+                        .filter(entity -> entity.getUniqueId().equals(id))
+                        .forEach(org.bukkit.entity.Entity::remove);
+            }
+            return false;
+        }
+
+        var ids = new ArrayList<UUID>();
+        for (var entry : listMarkers(worldName).entrySet()) {
+            for (var location : entry.getValue()) {
+                var stand = world.spawn(location.clone().add(0.5, 0, 0.5),
+                        org.bukkit.entity.ArmorStand.class, armorStand -> {
+                            armorStand.setInvisible(false);
+                            armorStand.setInvulnerable(true);
+                            armorStand.setGravity(false);
+                            armorStand.setMarker(true);
+                            armorStand.setCustomName(entry.getKey());
+                            armorStand.setCustomNameVisible(true);
+                            armorStand.setGlowing(true);
+                        });
+                if (stand != null) ids.add(stand.getUniqueId());
+            }
+        }
+        visualizationArmorStands.put(worldName, ids);
+        return true;
+    }
+
+    private void cleanupVisualization(String worldName) {
+        var ids = visualizationArmorStands.remove(worldName);
+        if (ids == null) return;
+        World world = Bukkit.getWorld(worldName);
+        if (world == null) return;
+        for (UUID id : ids) {
+            world.getEntitiesByClass(org.bukkit.entity.ArmorStand.class).stream()
+                    .filter(entity -> entity.getUniqueId().equals(id))
+                    .forEach(org.bukkit.entity.Entity::remove);
+        }
+    }
+
     // ------------------------------------------------------------------
     // Event handlers
     // ------------------------------------------------------------------
@@ -638,6 +684,7 @@ public class ResourceManager implements AutoCloseable {
     // ------------------------------------------------------------------
 
     private void cleanupSession(String worldName) {
+        cleanupVisualization(worldName);
         cancelParticleTask(worldName);
         sessions.remove(worldName);
         World world = Bukkit.getWorld(worldName);
@@ -660,6 +707,7 @@ public class ResourceManager implements AutoCloseable {
     public void close() {
         for (BukkitTask task : particleTasks.values()) task.cancel();
         particleTasks.clear();
+        for (String worldName : new ArrayList<>(visualizationArmorStands.keySet())) cleanupVisualization(worldName);
         for (String worldName : new ArrayList<>(sessions.keySet())) cleanupSession(worldName);
         sessions.clear();
     }

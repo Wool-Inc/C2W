@@ -59,14 +59,6 @@ public class LayoutEditorCommand extends BaseCommand {
     protected void createCommandChain() {
         commandTree.addChoice("create", buildCreateTree());
         commandTree.addChoice("modify", buildModifyTree());
-        commandTree.addChoice("list", new CommandPiece(null, this::listLayouts));
-        commandTree.addChoice("place", buildPlaceTree());
-        commandTree.addChoice("remove", new CommandPiece(null, this::removeStructure));
-        commandTree.addChoice("rotate", buildRotateTree());
-        commandTree.addChoice("move", buildMoveTree());
-        commandTree.addChoice("setspawn", buildSetSpawnTree());
-        commandTree.addChoice("save", new CommandPiece(null, this::saveLayout));
-        commandTree.addChoice("discard", new CommandPiece(null, this::discardLayout));
 
         initialCommandPiece = new ContextSensitiveRoot(commandTree, this::rootChoices);
     }
@@ -321,10 +313,10 @@ public class LayoutEditorCommand extends BaseCommand {
     }
 
     private List<String> rootChoices(CommandInput input) {
-        boolean editor = input.commandSender instanceof Player p && isEditorWorld(p);
-        if (editor) {
-            return List.of("list", "place", "remove", "setspawn", "save", "discard", "rotate", "move");
-        }
-        return List.of("create", "modify", "list");
+        if (!(input.commandSender instanceof Player p) || p.getWorld() == null) return List.of();
+        var lobby = worldManager.getLobbyWorld().getWorld();
+        return lobby != null && p.getWorld().equals(lobby)
+            ? List.of("create", "modify")
+            : List.of();
     }
 }

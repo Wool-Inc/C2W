@@ -151,6 +151,9 @@ public interface MinecraftManager extends net.klaaswhite.c2w.domain.ops.Minecraf
         /** Get the spawn position of a world. */
         BlockPos getSpawnPos(String worldName);
 
+        /** Set the world's spawn position. */
+        void setSpawnPos(String worldName, BlockPos pos);
+
         /** Get the world container directory. */
         File getWorldContainer();
 

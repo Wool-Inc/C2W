@@ -67,7 +67,7 @@ Use these to define, build, and manage structures for your maps.
 |---|---|---|
 | `/structure define <type> <w> <h> <d>` | Lobby | Register a new structure type with dimensions |
 | `/structure create <type> <id>` | Lobby | Opens a void world to build a structure |
-| `/structure modify <type> <id>` | Lobby | Loads an existing NBT into a void world for editing |
+| `/structure modify <type> <id>` | Lobby | Loads an existing NBT into a void world for editing; use `general lobby` or `general draft` for the special worlds |
 | `/structure save` | Build world | Exports your build to an NBT file |
 | `/structure discard` | Build world | Discards the build, destroys the void world |
 | `/structure list` | Anywhere | Lists registered structure types and saved files |
@@ -87,6 +87,47 @@ Markers are invisible points in the world that tell the plugin where things shou
 | `/marker create <player\|looking> <name>` | Places a marker at your feet or where you're looking |
 | `/marker remove <name>` | Deletes a named marker |
 | `/marker list` | Lists all markers in your current world |
+
+### Optional lobby and draft structures
+
+The lobby and draft worlds can be customized as the `general` structure type:
+
+```text
+plugins/c2w/structures/general/instances/lobby.nbt
+plugins/c2w/structures/general/instances/draft.nbt
+```
+
+Edit them with `/structure modify general lobby` and `/structure modify general draft`.
+Existing installations using `plugins/c2w/structures/lobby.nbt` and
+`plugins/c2w/structures/draft.nbt` are still discovered; saving either one writes
+the canonical `general/instances` path. If either special instance does not exist,
+the first modify command captures the generated world as a 100x64x100 structure.
+Smaller existing instances are expanded to the same dimensions the next time they
+are modified.
+
+The lobby structure is restored around world origin from its centered
+`(-54, 63, -54)` capture box with entities included when first installed; the
+transient draft structure uses the same placement each time a draft world is
+created. A
+`spawnpoint` marker is required in each structure; its position becomes the world
+spawn and is interpreted as the player's feet position.
+
+The draft structure also requires these inclusive marker pairs, where the two
+markers are opposite corners of the region in which a player's feet can stand:
+
+```text
+draft-red-1       draft-red-2
+draft-blue-1      draft-blue-2
+draft-spectator-1 draft-spectator-2
+```
+
+Team selection is still triggered by player movement into one of these regions;
+it does not depend on the block material. If a file is absent, cannot be loaded,
+or is missing required markers, C2W logs a warning when applicable and uses the
+existing code-generated lobby or draft layout instead. Changes to `lobby.nbt`
+are applied only during the next server startup. Changes to `draft.nbt` are
+applied the next time a draft world is created. Existing lobby marker entities
+are replaced during startup so reloads do not duplicate them.
 
 ### World commands (`/world`)
 

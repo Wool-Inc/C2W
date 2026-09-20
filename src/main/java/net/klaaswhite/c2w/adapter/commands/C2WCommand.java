@@ -53,74 +53,21 @@ public class C2WCommand extends BaseCommand {
 
     @Override
     protected void createCommandChain() {
-        var initCommand = new CommandPiece(null, this::init);
-        var ensureEntityWools = new CommandPiece(null, this::ensureEntityWools);
-        var previewCommand = new CommandPiece(null, this::preview);
-        var startLayoutHandler = new CommandPiece(null, this::startWithLayout);
-        var startLayoutChoice = new DynamicListChoiceCommandPiece(
-                startLayoutHandler, null, this::availableLayoutNames);
-        var startCommand = new TreeChoiceCommandPiece(this::startDefault);
-        startCommand.addChoice("layout", startLayoutChoice);
-        var endCommand = new CommandPiece(null, this::end);
-        var resetCommand = new CommandPiece(null, this::reset);
-        var reloadCommand = new CommandPiece(null, this::reload);
+        var layoutChoice = new DynamicListChoiceCommandPiece(
+            new CommandPiece(null, this::layoutSelect), null, this::availableLayoutNames);
 
-        var setWoolTimerCommand = new CommandPiece(null, this::setWoolTimer);
-        var setWoolTimerValue = new CommandPiece(setWoolTimerCommand, null);
-        var options = new ArrayList<String>();
-        options.add("interval");
-        options.add("basecapture");
-        options.add("increaseperplayer");
-        options.add("decreaseperplayer");
-        options.add("decreaseoutsidearea");
-        var setWoolTimerListCommand = new ListChoiceCommandPiece(setWoolTimerValue, null, options);
-
-        var getWoolTimerCommand = new CommandPiece(null, this::getWoolTimer);
-
-        var layoutListCommand = new CommandPiece(null, this::layoutList);
-        var layoutInfoHandler = new CommandPiece(null, this::layoutInfo);
-        var layoutInfoCommand = new DynamicListChoiceCommandPiece(
-                layoutInfoHandler, null, this::availableLayoutNames);
-        var layoutSelectHandler = new CommandPiece(null, this::layoutSelect);
-        var layoutSelectCommand = new DynamicListChoiceCommandPiece(
-                layoutSelectHandler, null, this::availableLayoutNames);
-        var layoutCommand = new TreeChoiceCommandPiece(null);
-        layoutCommand.addChoice("list", layoutListCommand);
-        layoutCommand.addChoice("info", layoutInfoCommand);
-        layoutCommand.addChoice("select", layoutSelectCommand);
-
-        var teamJoinHandler = new CommandPiece(null, this::teamJoin);
-        var teamJoinTeamChoice = new ListChoiceCommandPiece(
-                teamJoinHandler, null, java.util.List.of("Red", "Blue", "Spectator"));
-        var teamJoinPlayerChoice = new DynamicListChoiceCommandPiece(
-                teamJoinTeamChoice, null, this::onlinePlayerNames);
-        var teamLeaveHandler = new CommandPiece(null, this::teamLeave);
-        var teamLeavePlayerChoice = new DynamicListChoiceCommandPiece(
-                teamLeaveHandler, null, this::onlinePlayerNames);
-        var teamListCommand = new CommandPiece(null, this::teamList);
-        var teamAutoCommand = new CommandPiece(null, this::teamAuto);
-        var teamCommand = new TreeChoiceCommandPiece(null);
-        teamCommand.addChoice("join", teamJoinPlayerChoice);
-        teamCommand.addChoice("leave", teamLeavePlayerChoice);
-        teamCommand.addChoice("list", teamListCommand);
-        teamCommand.addChoice("auto", teamAutoCommand);
-
-        var statusCommand = new CommandPiece(null, this::status);
-
+        var teamChoice = new DynamicListChoiceCommandPiece(
+            new ListChoiceCommandPiece(
+                new CommandPiece(null, this::teamAssign), null,
+                List.of("Red", "Blue", "Spectator")),
+            null, this::onlinePlayerNames);
 
         var c2wCommand = new TreeChoiceCommandPiece(null);
-        c2wCommand.addChoice("init", initCommand);
-        c2wCommand.addChoice("ensurewools", ensureEntityWools);
-        c2wCommand.addChoice("preview", previewCommand);
-        c2wCommand.addChoice("start", startCommand);
-        c2wCommand.addChoice("end", endCommand);
-        c2wCommand.addChoice("reset", resetCommand);
-        c2wCommand.addChoice("reload", reloadCommand);
-        c2wCommand.addChoice("setwooltimer", setWoolTimerListCommand);
-        c2wCommand.addChoice("getwooltimer", getWoolTimerCommand);
-        c2wCommand.addChoice("layout", layoutCommand);
-        c2wCommand.addChoice("team", teamCommand);
-        c2wCommand.addChoice("status", statusCommand);
+        c2wCommand.addChoice("init", new CommandPiece(null, this::init));
+        c2wCommand.addChoice("layout", layoutChoice);
+        c2wCommand.addChoice("team", teamChoice);
+        c2wCommand.addChoice("start", new CommandPiece(null, this::startDefault));
+        c2wCommand.addChoice("reset", new CommandPiece(null, this::reset));
 
         initialCommandPiece = new ContextSensitiveRoot(c2wCommand, this::contextChoices);
     }
@@ -134,42 +81,29 @@ public class C2WCommand extends BaseCommand {
     }
 
     private List<String> contextChoices(CommandInput input) {
-        // Console / non-player senders: show full choice set
+        // Console / non-player senders: show the complete registered tree.
         if (!(input.commandSender instanceof Player player)) {
             return null;
         }
 
-        // Non-admin: only status is meaningful (all other /c2w commands require admin)
         if (!player.hasPermission("c2w.admin")) {
-            return java.util.List.of("status");
+            return List.of();
         }
 
-        var state = gameManager.getState();
-
-        // Commands available to admins regardless of state
-        var choices = new ArrayList<>(java.util.List.of("status", "reset", "reload", "setwooltimer", "getwooltimer"));
-
-        switch (state) {
-            case NOT_STARTED -> {
-                choices.add("init");
-            }
-            case DRAFT_CREATED -> {
-                choices.add("start");
-                choices.add("layout");
-                choices.add("team");
-                choices.add("preview");
-                choices.add("ensurewools");
-            }
-            case GAME_IN_PROGRESS -> {
-                choices.add("end");
-                choices.add("team");
-            }
-            case GAME_ENDED -> {
-                // Only reset/status — already covered by the defaults above
-            }
+        if (isWorld(player, "c2w_lobby")) {
+            return List.of("init");
         }
+        if (isWorld(player, "c2w_draft")) {
+            return List.of("layout", "team", "start", "reset");
+        }
+        if (isWorld(player, "c2w_game")) {
+            return List.of("team", "reset");
+        }
+        return List.of();
+    }
 
-        return choices;
+    private boolean isWorld(Player player, String worldName) {
+        return player.getWorld() != null && worldName.equals(player.getWorld().getName());
     }
 
     public boolean init(CommandInput commandInput) {
@@ -330,11 +264,39 @@ public class C2WCommand extends BaseCommand {
     public boolean layoutSelect(CommandInput commandInput) {
         if (!(commandInput.commandSender instanceof org.bukkit.command.CommandSender s)) return false;
         if (checkAdmin(commandInput, s)) return true;
-        if (commandInput.strings.length < 3) {
-            s.sendMessage("Usage: /c2w layout select <layoutname>");
+        if (commandInput.strings.length < 2) {
+            s.sendMessage("Usage: /c2w layout <layoutname>");
             return true;
         }
-        this.gameManager.selectLayout(commandInput, commandInput.strings[2]);
+        this.gameManager.selectLayout(commandInput, commandInput.strings[1]);
+        return true;
+    }
+
+    public boolean teamAssign(CommandInput commandInput) {
+        if (!(commandInput.commandSender instanceof org.bukkit.command.CommandSender s)) return false;
+        if (checkAdmin(commandInput, s)) return true;
+        if (!(commandInput.commandSender instanceof Player player)) return false;
+        if (commandInput.strings.length < 3) {
+            player.sendMessage("Usage: /c2w team <player> <team>");
+            return false;
+        }
+
+        var target = playerManager.getPlayer(commandInput.strings[1]);
+        if (target == null) {
+            player.sendMessage("Player '" + commandInput.strings[1] + "' not found.");
+            return false;
+        }
+        var team = ManagedTeam.teams.values().stream()
+                .filter(candidate -> candidate.teamName.equalsIgnoreCase(commandInput.strings[2]))
+                .findFirst().orElse(null);
+        if (team == null) {
+            player.sendMessage("Team '" + commandInput.strings[2]
+                    + "' not found. Available teams: Red, Blue, Spectator");
+            return false;
+        }
+
+        playerManager.changeTeam(target, team);
+        player.sendMessage("Added " + target.getPlayer().getName() + " to " + team.teamName + " team.");
         return true;
     }
 

@@ -423,6 +423,7 @@ class MarkerManagerTest {
     void markerNamesContainsExpected() {
         assertNotNull(MarkerManager.MARKER_NAMES);
         assertTrue(MarkerManager.MARKER_NAMES.contains("wool"));
-        assertEquals(5, MarkerManager.MARKER_NAMES.size());
+        assertTrue(MarkerManager.MARKER_NAMES.contains("draft-red-1"));
+        assertEquals(11, MarkerManager.MARKER_NAMES.size());
     }
 }

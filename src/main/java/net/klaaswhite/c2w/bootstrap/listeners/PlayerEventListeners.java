@@ -6,11 +6,13 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.entity.FoodLevelChangeEvent;
 import org.bukkit.event.player.PlayerChangedWorldEvent;
+import org.bukkit.event.player.PlayerCommandPreprocessEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
+import org.bukkit.event.server.ServerCommandEvent;
 
 public class PlayerEventListeners implements Listener {
 
@@ -58,6 +60,37 @@ public class PlayerEventListeners implements Listener {
     @EventHandler
     public void onPlayerQuit(PlayerQuitEvent event) {
         this.eventManager.pushMinecraftEvent(event);
+    }
+
+    @EventHandler
+    public void onPlayerCommandPreprocess(PlayerCommandPreprocessEvent event) {
+        if (isVanillaTeamCommand(event.getMessage())) {
+            event.setCancelled(true);
+            event.getPlayer().sendMessage("Use /c2w team <player> <team>.");
+            return;
+        }
+        this.eventManager.pushMinecraftEvent(event);
+    }
+
+    @EventHandler
+    public void onServerCommand(ServerCommandEvent event) {
+        if (isVanillaTeamCommand(event.getCommand())) {
+            event.setCancelled(true);
+            event.getSender().sendMessage("Use /c2w team <player> <team>.");
+            return;
+        }
+        this.eventManager.pushMinecraftEvent(event);
+    }
+
+    static boolean isVanillaTeamCommand(String rawCommand) {
+        if (rawCommand == null) return false;
+        String command = rawCommand.trim();
+        if (command.startsWith("/")) command = command.substring(1).trim();
+        if (command.isEmpty()) return false;
+        String label = command.split("\\s+", 2)[0].toLowerCase(java.util.Locale.ROOT);
+        int namespaceSeparator = label.lastIndexOf(':');
+        if (namespaceSeparator >= 0) label = label.substring(namespaceSeparator + 1);
+        return "team".equals(label);
     }
 
 }

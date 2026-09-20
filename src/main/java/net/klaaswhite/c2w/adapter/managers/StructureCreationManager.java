@@ -52,6 +52,13 @@ public class StructureCreationManager implements AutoCloseable {
     private final Map<String, List<UUID>> visualizationArmorStands = new HashMap<>();
     private static final Logger log = Logger.getLogger(StructureCreationManager.class.getName());
 
+    private static final String GENERAL_TYPE = FolderStructureTypeConfig.GENERAL_TYPE;
+    private static final String LOBBY_ID = "lobby";
+    private static final String DRAFT_ID = "draft";
+    private static final BlockPos SPECIAL_STRUCTURE_ORIGIN = new BlockPos(-54, 63, -54);
+    private static final int SPECIAL_FOOTPRINT_SIZE = 100;
+    private static final int SPECIAL_STRUCTURE_HEIGHT = 64;
+
     public StructureCreationManager(
             JavaPlugin plugin,
             EventManager eventManager,
@@ -127,6 +134,7 @@ public class StructureCreationManager implements AutoCloseable {
         sessions.put(worldName, new CreationSession(worldName, typeName, id, player.getUniqueId(), 0f));
         startParticleBoundary(worldName, dims[0], dims[1], dims[2], cx, cy, cz);
 
+        mc.players().setGameMode(player.getName(), "CREATIVE");
         mc.players().teleportToWorld(player.getName(), new BlockPos(cx, cy, cz), worldName);
         lockStructure(typeName, id, player);
         return getWorld(worldName);
@@ -151,7 +159,12 @@ public class StructureCreationManager implements AutoCloseable {
             mc.worlds().deleteWorld(worldName);
         }
 
-        File nbtFile = new File(dataFolder, "structures/" + typeName + "/instances/" + id + ".nbt");
+        File nbtFile = structureInstanceFile(typeName, id);
+        if (!nbtFile.exists() && bootstrapSpecialInstance(typeName, id)) {
+            nbtFile = canonicalStructureInstanceFile(typeName, id);
+        } else if (nbtFile.exists() && expandSpecialInstance(typeName, id, nbtFile)) {
+            nbtFile = canonicalStructureInstanceFile(typeName, id);
+        }
         if (!nbtFile.exists()) {
             player.sendMessage("No saved structure found for " + typeName + "/" + id + ".");
             return null;
@@ -173,13 +186,14 @@ public class StructureCreationManager implements AutoCloseable {
             return null;
         }
 
+        int[] nbtSize = mc.structures().getSize(structId);
         int[] dims = structureTypeConfig.getDimensions(typeName);
+        if (dims == null) dims = nbtSize;
         if (dims == null) {
             player.sendMessage("Unknown structure type: " + typeName);
             return null;
         }
 
-        int[] nbtSize = mc.structures().getSize(structId);
         if (nbtSize != null && (nbtSize[0] != dims[0] || nbtSize[1] != dims[1] || nbtSize[2] != dims[2])) {
             player.sendMessage("§eWarning: This instance is " + nbtSize[0] + "x" + nbtSize[1] + "x" + nbtSize[2] +
                     " but the type is now " + dims[0] + "x" + dims[1] + "x" + dims[2] +
@@ -191,6 +205,7 @@ public class StructureCreationManager implements AutoCloseable {
         sessions.put(worldName, new CreationSession(worldName, typeName, id, player.getUniqueId(), 0f));
         startParticleBoundary(worldName, dims[0], dims[1], dims[2], cx, cy, cz);
 
+        mc.players().setGameMode(player.getName(), "CREATIVE");
         mc.players().teleportToWorld(player.getName(), new BlockPos(cx, cy, cz), worldName);
         lockStructure(typeName, id, player);
         return getWorld(worldName);
@@ -211,6 +226,7 @@ public class StructureCreationManager implements AutoCloseable {
         }
 
         int[] dims = structureTypeConfig.getDimensions(typeName);
+        if (dims == null) dims = getSavedNbtDimensions(typeName, id);
         if (dims == null) {
             player.sendMessage("Unknown structure type: " + typeName);
             return false;
@@ -301,8 +317,10 @@ public class StructureCreationManager implements AutoCloseable {
             player.sendMessage("Structure " + typeName + "/" + id + " is currently being edited.");
             return false;
         }
-        File nbtFile = new File(dataFolder, "structures/" + typeName + "/instances/" + id + ".nbt");
+        File nbtFile = structureInstanceFile(typeName, id);
         if (nbtFile.exists()) nbtFile.delete();
+        File legacyFile = legacyGeneralInstanceFile(typeName, id);
+        if (legacyFile != null && legacyFile.exists()) legacyFile.delete();
         unlockStructure(typeName, id);
         return true;
     }
@@ -315,7 +333,18 @@ public class StructureCreationManager implements AutoCloseable {
     }
 
     public boolean isStructureLocked(String typeName, String id) {
-        return fs.isFile(lockFile(typeName, id));
+        File lock = lockFile(typeName, id);
+        if (!fs.isFile(lock)) return false;
+
+        String worldName = creationWorldName(typeName, id);
+        if (sessions.containsKey(worldName) || mc.worlds().getWorld(worldName) != null) {
+            return true;
+        }
+
+        // The world cleanup runs before this manager is constructed, so a crash
+        // can leave the lock file behind after its transient editor world is gone.
+        fs.delete(lock);
+        return false;
     }
 
     /** Count resource spot marker entities in a world matching the given resourceId prefix. */
@@ -436,6 +465,36 @@ public class StructureCreationManager implements AutoCloseable {
         return false;
     }
 
+    public boolean removeGameMarkerLooking(Player player) {
+        var block = player.getTargetBlockExact(5);
+        if (block == null) {
+            player.sendMessage("No block targeted. Look at a block within 5 blocks.");
+            return false;
+        }
+        return removeGameMarkerAt(player, block.getLocation());
+    }
+
+    public boolean removeGameMarkerHere(Player player) {
+        return removeGameMarkerAt(player, player.getLocation().getBlock().getLocation());
+    }
+
+    private boolean removeGameMarkerAt(Player player, org.bukkit.Location location) {
+        String worldName = player.getWorld().getName();
+        var markers = mc.markers().getMarkersInWorld(worldName);
+        BlockPos targetPos = new BlockPos(location.getBlockX(), location.getBlockY(), location.getBlockZ());
+        for (var mm : markers) {
+            if (mm.getPosition().x() == targetPos.x()
+                    && mm.getPosition().y() == targetPos.y()
+                    && mm.getPosition().z() == targetPos.z()) {
+                mm.remove();
+                player.sendMessage("Removed game marker.");
+                return true;
+            }
+        }
+        player.sendMessage("No game marker found at this location.");
+        return false;
+    }
+
 
     // ------------------------------------------------------------------
     // Event handlers
@@ -525,6 +584,127 @@ public class StructureCreationManager implements AutoCloseable {
         File instancesDir = new File(dataFolder, "structures/" + typeName + "/instances");
         instancesDir.mkdirs();
         mc.structures().saveStructure(new File(instancesDir, id + ".nbt"), structId);
+    }
+
+    private File structureInstanceFile(String typeName, String id) {
+        File canonical = canonicalStructureInstanceFile(typeName, id);
+        File legacy = legacyGeneralInstanceFile(typeName, id);
+        return canonical.isFile() || legacy == null || !legacy.isFile() ? canonical : legacy;
+    }
+
+    private File canonicalStructureInstanceFile(String typeName, String id) {
+        return new File(dataFolder, "structures/" + typeName + "/instances/" + id + ".nbt");
+    }
+
+    private File legacyGeneralInstanceFile(String typeName, String id) {
+        if (!GENERAL_TYPE.equals(typeName) || !(id.equals(LOBBY_ID) || id.equals(DRAFT_ID))) return null;
+        return new File(dataFolder, "structures/" + id + ".nbt");
+    }
+
+    private boolean bootstrapSpecialInstance(String typeName, String id) {
+        if (!GENERAL_TYPE.equals(typeName) || !(LOBBY_ID.equals(id) || DRAFT_ID.equals(id))) return false;
+
+        String worldName;
+        BlockPos origin;
+        BlockPos size;
+        if (LOBBY_ID.equals(id)) {
+            worldName = worldManager.getLobbyWorld().getName();
+            origin = new BlockPos(-54, 63, -54);
+            size = new BlockPos(SPECIAL_FOOTPRINT_SIZE, SPECIAL_STRUCTURE_HEIGHT, SPECIAL_FOOTPRINT_SIZE);
+            ensureMarker(worldName, new BlockPos(0, 65, 0), "spawnpoint");
+        } else {
+            if (worldManager.createDraftWorld() == null) return false;
+            worldName = worldManager.getDraftWorld().getName();
+            origin = new BlockPos(-54, 63, -54);
+            size = new BlockPos(SPECIAL_FOOTPRINT_SIZE, SPECIAL_STRUCTURE_HEIGHT, SPECIAL_FOOTPRINT_SIZE);
+            ensureDraftMarkers(worldName);
+        }
+
+        if (mc.worlds().getWorld(worldName) == null) return false;
+        try {
+            String structureId = mc.structures().createStructure(worldName, origin, size);
+            if (structureId == null) return false;
+            File target = canonicalStructureInstanceFile(typeName, id);
+            File parent = target.getParentFile();
+            if (parent != null) parent.mkdirs();
+            mc.structures().saveStructure(target, structureId);
+            return true;
+        } catch (IOException | RuntimeException e) {
+            log.warning("Failed to bootstrap " + typeName + "/" + id + ": " + e.getMessage());
+            return false;
+        }
+    }
+
+    private boolean expandSpecialInstance(String typeName, String id, File nbtFile) {
+        if (!GENERAL_TYPE.equals(typeName) || !(LOBBY_ID.equals(id) || DRAFT_ID.equals(id))) return false;
+
+        int[] dimensions;
+        try {
+            String structureId = mc.structures().loadStructure(nbtFile);
+            dimensions = mc.structures().getSize(structureId);
+        } catch (IOException | RuntimeException e) {
+            return false;
+        }
+        if (dimensions == null || (dimensions[0] >= SPECIAL_FOOTPRINT_SIZE
+            && dimensions[1] >= SPECIAL_STRUCTURE_HEIGHT
+            && dimensions[2] >= SPECIAL_FOOTPRINT_SIZE)) return false;
+
+        String worldName;
+        if (LOBBY_ID.equals(id)) {
+            worldName = worldManager.getLobbyWorld().getName();
+        } else {
+            if (worldManager.createDraftWorld() == null) return false;
+            worldName = worldManager.getDraftWorld().getName();
+        }
+        if (mc.worlds().getWorld(worldName) == null) return false;
+
+        try {
+            String structureId = mc.structures().createStructure(worldName,
+                    SPECIAL_STRUCTURE_ORIGIN,
+                    new BlockPos(SPECIAL_FOOTPRINT_SIZE,
+                        Math.max(dimensions[1], SPECIAL_STRUCTURE_HEIGHT),
+                        SPECIAL_FOOTPRINT_SIZE));
+            if (structureId == null) return false;
+                ensureMarker(worldName, new BlockPos(0, 65, 0), "spawnpoint");
+            if (DRAFT_ID.equals(id)) ensureDraftMarkers(worldName);
+            File target = canonicalStructureInstanceFile(typeName, id);
+            File parent = target.getParentFile();
+            if (parent != null) parent.mkdirs();
+            mc.structures().saveStructure(target, structureId);
+            return true;
+        } catch (IOException | RuntimeException e) {
+            log.warning("Failed to expand " + typeName + "/" + id + ": " + e.getMessage());
+            return false;
+        }
+    }
+
+    private void ensureDraftMarkers(String worldName) {
+        ensureMarker(worldName, new BlockPos(-11, 65, -1), "draft-red-1");
+        ensureMarker(worldName, new BlockPos(-9, 65, 1), "draft-red-2");
+        ensureMarker(worldName, new BlockPos(9, 65, -1), "draft-blue-1");
+        ensureMarker(worldName, new BlockPos(11, 65, 1), "draft-blue-2");
+        ensureMarker(worldName, new BlockPos(-1, 71, 9), "draft-spectator-1");
+        ensureMarker(worldName, new BlockPos(1, 71, 11), "draft-spectator-2");
+    }
+
+    private void ensureMarker(String worldName, BlockPos position, String name) {
+        String markerKey = mc.markers().getMarkerKey();
+        for (var marker : mc.markers().getMarkersInWorld(worldName)) {
+            if (name.equals(marker.getPersistentData(markerKey))) return;
+        }
+        var marker = mc.markers().spawnMarker(worldName, position);
+        if (marker != null) marker.setPersistentData(markerKey, name);
+    }
+
+    private int[] getSavedNbtDimensions(String typeName, String id) {
+        File nbtFile = structureInstanceFile(typeName, id);
+        if (!nbtFile.isFile()) return null;
+        try {
+            String structureId = mc.structures().loadStructure(nbtFile);
+            return mc.structures().getSize(structureId);
+        } catch (IOException e) {
+            return null;
+        }
     }
 
     // ------------------------------------------------------------------

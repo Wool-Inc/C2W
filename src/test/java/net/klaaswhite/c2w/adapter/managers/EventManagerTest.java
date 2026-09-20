@@ -1,7 +1,5 @@
 package net.klaaswhite.c2w.adapter.managers;
 
-import com.comphenix.protocol.ProtocolLibrary;
-import com.comphenix.protocol.ProtocolManager;
 import net.klaaswhite.c2w.bootstrap.C2W;
 import net.klaaswhite.c2w.bootstrap.Managers;
 import net.klaaswhite.c2w.bootstrap.listeners.EntityEventListeners;
@@ -42,11 +40,8 @@ class EventManagerTest {
 
     /** Creates an EventManager with all Bukkit/ProtocolLib dependencies mocked. */
     private EventManager createEventManager() {
-        var protoManager = mock(ProtocolManager.class);
-        try (var protoLib = Mockito.mockStatic(ProtocolLibrary.class);
-             var entityCons = Mockito.mockConstruction(EntityEventListeners.class);
+        try (var entityCons = Mockito.mockConstruction(EntityEventListeners.class);
              var playerCons = Mockito.mockConstruction(PlayerEventListeners.class)) {
-            protoLib.when(ProtocolLibrary::getProtocolManager).thenReturn(protoManager);
             return new EventManager(plugin, managers);
         }
     }

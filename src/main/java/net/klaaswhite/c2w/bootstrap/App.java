@@ -5,6 +5,7 @@ import net.klaaswhite.c2w.domain.managers.NbtStructureSource;
 import net.klaaswhite.c2w.domain.model.MapLayout;
 import net.klaaswhite.c2w.domain.game.WoolTimer;
 import net.klaaswhite.c2w.adapter.commands.C2WCommand;
+import net.klaaswhite.c2w.adapter.commands.ContextCommand;
 import net.klaaswhite.c2w.adapter.commands.LayoutEditorCommand;
 import net.klaaswhite.c2w.adapter.commands.MarkerCommand;
 import net.klaaswhite.c2w.adapter.commands.StructureCommand;
@@ -31,7 +32,6 @@ import net.klaaswhite.c2w.adapter.managers.TrialSpawnerManager;
 import net.klaaswhite.c2w.domain.managers.StructureManager;
 import net.klaaswhite.c2w.adapter.managers.WorldManager;
 import net.klaaswhite.c2w.adapter.minecraft.MinecraftManager;
-import net.klaaswhite.c2w.bootstrap.listeners.ChangeTeamPacketListener;
 import net.klaaswhite.c2w.bootstrap.minecraft.BukkitMinecraftManager;
 import net.klaaswhite.c2w.bootstrap.minecraft.BukkitWoolTimerScheduler;
 import net.klaaswhite.c2w.bootstrap.ops.BukkitFileSystemOps;
@@ -52,6 +52,7 @@ public class App implements AutoCloseable {
     public CommandManager commandManager;
 
     private final List<AutoCloseable> closeables = new ArrayList<>();
+    private boolean initialManagerBootstrap = true;
 
     public App(C2W plugin) {
         this.plugin = plugin;
@@ -71,7 +72,8 @@ public class App implements AutoCloseable {
         ((BukkitMinecraftManager) mc).setEventManager(this.managers.eventManager);
         var scheduler = new BukkitWoolTimerScheduler(plugin);
 
-        this.managers.worldManager = new WorldManager(plugin, mc);
+        this.managers.worldManager = new WorldManager(plugin, mc, initialManagerBootstrap);
+        initialManagerBootstrap = false;
 
         // Heartbeat that pins world time/weather and grants every player night vision.
         this.managers.environmentManager = new EnvironmentManager(
@@ -151,10 +153,6 @@ public class App implements AutoCloseable {
                 structureTypeConfig
         );
 
-        this.managers.eventManager.registerPacketListener(
-                new ChangeTeamPacketListener(plugin, this.managers.playerManager)
-        );
-
         closeables.add(this.managers.eventManager);
         closeables.add(this.managers.boundaryManager);
         closeables.add(this.managers.teamSelectionManager);
@@ -180,7 +178,8 @@ public class App implements AutoCloseable {
                 new C2WCommand(plugin, this.managers.gameManager, this.managers.markerManager,
                         this.managers.layoutManager, this.managers.playerManager, v -> this.rebuild(),
                         this.managers.woolTimer, this.managers.mc),
-                new MarkerCommand(plugin, this.managers.markerManager),
+            new MarkerCommand(plugin, this.managers.structureCreationManager,
+                this.managers.structureTypeConfig),
                 new WorldCommand(plugin, this.managers.worldManager),
                 new StructureCommand(plugin, this.managers.gameManager, this.managers.structureCreationManager,
                         this.managers.resourceManager, this.managers.structureTypeConfig, this.managers.structureManager,
@@ -188,6 +187,54 @@ public class App implements AutoCloseable {
                 new LayoutEditorCommand(plugin, this.managers.layoutEditorManager,
                         this.managers.layoutManager, this.managers.structureTypeConfig, this.managers.structureManager,
                         this.managers.worldManager, this.managers.gameManager)
+                    , new ContextCommand(plugin, "visualizemarkers", this.managers.gameManager,
+                        this.managers.structureCreationManager, this.managers.resourceManager,
+                        this.managers.layoutEditorManager, this.managers.structureTypeConfig,
+                        this.managers.structureManager, this.managers.layoutManager, this.managers.worldManager)
+                    , new ContextCommand(plugin, "save", this.managers.gameManager,
+                        this.managers.structureCreationManager, this.managers.resourceManager,
+                        this.managers.layoutEditorManager, this.managers.structureTypeConfig,
+                        this.managers.structureManager, this.managers.layoutManager, this.managers.worldManager)
+                    , new ContextCommand(plugin, "discard", this.managers.gameManager,
+                        this.managers.structureCreationManager, this.managers.resourceManager,
+                        this.managers.layoutEditorManager, this.managers.structureTypeConfig,
+                        this.managers.structureManager, this.managers.layoutManager, this.managers.worldManager)
+                    , new ContextCommand(plugin, "clear", this.managers.gameManager,
+                        this.managers.structureCreationManager, this.managers.resourceManager,
+                        this.managers.layoutEditorManager, this.managers.structureTypeConfig,
+                        this.managers.structureManager, this.managers.layoutManager, this.managers.worldManager)
+                    , new ContextCommand(plugin, "define", this.managers.gameManager,
+                        this.managers.structureCreationManager, this.managers.resourceManager,
+                        this.managers.layoutEditorManager, this.managers.structureTypeConfig,
+                        this.managers.structureManager, this.managers.layoutManager, this.managers.worldManager)
+                    , new ContextCommand(plugin, "mark", this.managers.gameManager,
+                        this.managers.structureCreationManager, this.managers.resourceManager,
+                        this.managers.layoutEditorManager, this.managers.structureTypeConfig,
+                        this.managers.structureManager, this.managers.layoutManager, this.managers.worldManager)
+                    , new ContextCommand(plugin, "list", this.managers.gameManager,
+                        this.managers.structureCreationManager, this.managers.resourceManager,
+                        this.managers.layoutEditorManager, this.managers.structureTypeConfig,
+                        this.managers.structureManager, this.managers.layoutManager, this.managers.worldManager)
+                    , new ContextCommand(plugin, "place", this.managers.gameManager,
+                        this.managers.structureCreationManager, this.managers.resourceManager,
+                        this.managers.layoutEditorManager, this.managers.structureTypeConfig,
+                        this.managers.structureManager, this.managers.layoutManager, this.managers.worldManager)
+                    , new ContextCommand(plugin, "move", this.managers.gameManager,
+                        this.managers.structureCreationManager, this.managers.resourceManager,
+                        this.managers.layoutEditorManager, this.managers.structureTypeConfig,
+                        this.managers.structureManager, this.managers.layoutManager, this.managers.worldManager)
+                    , new ContextCommand(plugin, "remove", this.managers.gameManager,
+                        this.managers.structureCreationManager, this.managers.resourceManager,
+                        this.managers.layoutEditorManager, this.managers.structureTypeConfig,
+                        this.managers.structureManager, this.managers.layoutManager, this.managers.worldManager)
+                    , new ContextCommand(plugin, "rotate", this.managers.gameManager,
+                        this.managers.structureCreationManager, this.managers.resourceManager,
+                        this.managers.layoutEditorManager, this.managers.structureTypeConfig,
+                        this.managers.structureManager, this.managers.layoutManager, this.managers.worldManager)
+                    , new ContextCommand(plugin, "setspawn", this.managers.gameManager,
+                        this.managers.structureCreationManager, this.managers.resourceManager,
+                        this.managers.layoutEditorManager, this.managers.structureTypeConfig,
+                        this.managers.structureManager, this.managers.layoutManager, this.managers.worldManager)
         );
         closeables.add(commandManager);
     }

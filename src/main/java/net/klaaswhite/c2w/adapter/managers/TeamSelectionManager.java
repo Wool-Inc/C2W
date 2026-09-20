@@ -43,8 +43,12 @@ public class TeamSelectionManager implements AutoCloseable {
         if (!to.getWorld().getName().equals(draft.getName())) return;
 
         // Movement-transient: only fire when actually standing on a platform.
-        String teamName = WorldManager.resolveTeamSelectionAt(
+        String teamName = worldManager.resolveTeamSelectionAt(
+            to.getWorld().getName(), to.getBlockX(), to.getBlockY(), to.getBlockZ());
+        if (teamName == null && !worldManager.hasMarkerDefinedDraftSelection()) {
+            teamName = WorldManager.resolveTeamSelectionAt(
                 to.getBlockX(), to.getBlockY(), to.getBlockZ());
+        }
         if (teamName == null) return;
 
         var player = event.getPlayer();

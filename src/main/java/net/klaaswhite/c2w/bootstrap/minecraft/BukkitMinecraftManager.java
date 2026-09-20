@@ -722,6 +722,13 @@ public class BukkitMinecraftManager implements MinecraftManager, AutoCloseable {
         }
 
         @Override
+        public void setSpawnPos(String worldName, BlockPos pos) {
+            World world = Bukkit.getWorld(worldName);
+            if (world == null) return;
+            world.setSpawnLocation(new Location(world, pos.x(), pos.y(), pos.z()));
+        }
+
+        @Override
         public File getWorldContainer() {
             return Bukkit.getWorldContainer();
         }
@@ -890,6 +897,7 @@ public class BukkitMinecraftManager implements MinecraftManager, AutoCloseable {
                 return List.of();
             }
             return world.getEntitiesByClass(Marker.class).stream()
+                    .filter(marker -> !marker.isDead())
                     .filter(m -> m.getPersistentDataContainer().has(markerKey, PersistentDataType.STRING))
                     .map(m -> (MarkerEntity) new BukkitMarkerEntity(m,
                             m.getPersistentDataContainer().get(markerKey, PersistentDataType.STRING),
@@ -941,6 +949,7 @@ public class BukkitMinecraftManager implements MinecraftManager, AutoCloseable {
             if (world == null) return List.of();
             var result = new java.util.ArrayList<ManagedMarker>();
             for (Marker marker : world.getEntitiesByClass(Marker.class)) {
+                if (marker.isDead()) continue;
                 String val = marker.getPersistentDataContainer()
                         .get(new NamespacedKey(plugin, key), PersistentDataType.STRING);
                 if (val == null) continue;
@@ -957,6 +966,11 @@ public class BukkitMinecraftManager implements MinecraftManager, AutoCloseable {
     // =========================================================================
 
     private record BukkitMarkerEntity(Marker bukkit, @Nullable String name, JavaPlugin plugin) implements MarkerEntity {
+
+        @Override
+        public java.util.UUID getUniqueId() {
+            return bukkit.getUniqueId();
+        }
 
         @Override
         public BlockPos getPosition() {

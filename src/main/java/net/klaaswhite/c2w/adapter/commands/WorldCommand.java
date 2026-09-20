@@ -2,7 +2,6 @@ package net.klaaswhite.c2w.adapter.commands;
 
 import net.klaaswhite.c2w.domain.commands.CommandPiece;
 import net.klaaswhite.c2w.domain.commands.ListChoiceCommandPiece;
-import net.klaaswhite.c2w.domain.commands.TreeChoiceCommandPiece;
 import net.klaaswhite.c2w.domain.commands.CommandInput;
 import net.klaaswhite.c2w.adapter.managers.WorldManager;
 import org.bukkit.entity.Player;
@@ -30,13 +29,8 @@ public class WorldCommand extends BaseCommand {
         worldOptions.add("draft");
         worldOptions.add("game");
 
-        var teleportHandler = new CommandPiece(null, this::teleportTo);
-        var teleportChoice = new ListChoiceCommandPiece(teleportHandler, null, worldOptions);
-
-        var worldCommand = new TreeChoiceCommandPiece(null);
-        worldCommand.addChoice("teleport", teleportChoice);
-
-        initialCommandPiece = worldCommand;
+        initialCommandPiece = new ListChoiceCommandPiece(
+            new CommandPiece(null, this::teleportTo), null, worldOptions);
     }
 
     @Override
@@ -58,9 +52,9 @@ public class WorldCommand extends BaseCommand {
         if (checkAdmin(input, s)) return true;
         if (!(input.commandSender instanceof Player player))
             return false;
-        if (input.strings.length < 2) return false;
+        if (input.strings.length < 1) return false;
 
-        var target = input.strings[1];
+        var target = input.strings[0];
         var managed = switch (target) {
             case "lobby" -> worldManager.getLobbyWorld();
             case "reference" -> worldManager.getReferenceWorld();

@@ -66,13 +66,10 @@ public class StructureCommand extends BaseCommand {
                 d2, null, this::typeNameSuggestions);
         root.addChoice("define", d1);
 
-        var resizeHandler = new CommandPiece(null, this::resizeType);
-        var r4 = new CommandPiece(resizeHandler, null);
-        var r3 = new CommandPiece(r4, null);
-        var r2 = new CommandPiece(r3, null);
-        var r1 = new DynamicListChoiceCommandPiece(
-                r2, null, this::typeNameSuggestions);
-        root.addChoice("resize", r1);
+        var resourceChoice = new DynamicListChoiceCommandPiece(
+            new CommandPiece(null, this::openResourceWorld), null,
+            this::typeNameSuggestions);
+        root.addChoice("resource", resourceChoice);
 
         var createHandler = new CommandPiece(null, this::createInstance);
         var c2 = new DynamicListChoiceCommandPiece(
@@ -87,22 +84,6 @@ public class StructureCommand extends BaseCommand {
         var m1 = new DynamicListChoiceCommandPiece(
                 m2, null, this::typeNameSuggestions);
         root.addChoice("modify", m1);
-
-        root.addChoice("list", new CommandPiece(null, this::listStructures));
-
-        var deleteHandler = new CommandPiece(null, this::deleteInstance);
-        var del2 = new DynamicListChoiceCommandPiece(
-                deleteHandler, null, this::instanceIdSuggestions);
-        var del1 = new DynamicListChoiceCommandPiece(
-                del2, null, this::typeNameSuggestions);
-        root.addChoice("delete", del1);
-
-        root.addChoice("resource", new ContextSensitiveRoot(buildResourceSubTree(), this::resourceRootChoices));
-
-        root.addChoice("marker", new ContextSensitiveRoot(buildMarkerSubTree(), this::markerRootChoices));
-
-        root.addChoice("save", new CommandPiece(null, this::save));
-        root.addChoice("discard", new CommandPiece(null, this::discard));
 
         initialCommandPiece = new ContextSensitiveRoot(root, this::rootChoices);
     }
@@ -211,6 +192,9 @@ public class StructureCommand extends BaseCommand {
 
     private List<String> typeNameSuggestions(CommandInput input) {
         var names = new ArrayList<>(typeConfig.getTypeNames());
+        if (!names.contains(FolderStructureTypeConfig.GENERAL_TYPE)) {
+            names.add(FolderStructureTypeConfig.GENERAL_TYPE);
+        }
         var templates = structureManager.discoverTemplates();
         for (var t : templates) {
             if (!names.contains(t.getTypeName())) names.add(t.getTypeName());
@@ -221,9 +205,18 @@ public class StructureCommand extends BaseCommand {
     private List<String> instanceIdSuggestions(CommandInput input) {
         structureManager.discoverTemplates();
         if (input.strings.length < 2) return List.of();
-        return structureManager.getTemplates(input.strings[1]).stream()
+        var ids = new ArrayList<>(structureManager.getTemplates(input.strings[1]).stream()
                 .map(StructureData::getId)
-                .toList();
+                .toList());
+        for (String id : typeConfig.getInstanceIds(input.strings[1])) {
+            if (!ids.contains(id)) ids.add(id);
+        }
+        if (FolderStructureTypeConfig.GENERAL_TYPE.equals(input.strings[1])) {
+            for (String id : List.of("lobby", "draft")) {
+                if (!ids.contains(id)) ids.add(id);
+            }
+        }
+        return ids;
     }
 
     private List<String> resourceIdSuggestionsForContext(CommandInput input) {
@@ -417,11 +410,11 @@ public class StructureCommand extends BaseCommand {
         if (!checkLobby(input)) return false;
         Player p = (Player) input.commandSender;
 
-        if (input.strings.length < 3) {
-            p.sendMessage("Usage: /structure resource world <type>");
+        if (input.strings.length < 2) {
+            p.sendMessage("Usage: /structure resource <type>");
             return false;
         }
-        resourceManager.openResourceWorld(p, input.strings[2]);
+        resourceManager.openResourceWorld(p, input.strings[1]);
         return true;
     }
 
@@ -799,7 +792,7 @@ public class StructureCommand extends BaseCommand {
         }
         if (input.strings.length < 3) {
             p.sendMessage("Usage: /structure marker place <name>");
-            p.sendMessage("§eMarker names: wool, spawnpoint, boundary-woolcap-pit-<1|2>, boundary-woolcap-elevator-<1|2>");
+            p.sendMessage("§eMarker names: wool, spawnpoint, draft-{red|blue|spectator}-<1|2>, boundary-woolcap-pit-<1|2>, boundary-woolcap-elevator-<1|2>");
             return false;
         }
         return creationManager.placeGameMarker(p, input.strings[2]);
@@ -814,7 +807,7 @@ public class StructureCommand extends BaseCommand {
         }
         if (input.strings.length < 3) {
             p.sendMessage("Usage: /structure marker placehere <name>");
-            p.sendMessage("§eMarker names: wool, spawnpoint, boundary-woolcap-pit-<1|2>, boundary-woolcap-elevator-<1|2>");
+            p.sendMessage("§eMarker names: wool, spawnpoint, draft-{red|blue|spectator}-<1|2>, boundary-woolcap-pit-<1|2>, boundary-woolcap-elevator-<1|2>");
             return false;
         }
         return creationManager.placeGameMarkerHere(p, input.strings[2]);
@@ -865,25 +858,11 @@ public class StructureCommand extends BaseCommand {
     }
 
     private List<String> rootChoices(CommandInput input) {
-        if (!(input.commandSender instanceof Player p)) {
-            // Non-player: fall back to the full delegate choice list.
-            return null;
-        }
-
-        var world = p.getWorld();
-        if (world == null) {
-            return null;
-        }
-
-        var worldName = world.getName();
-        if (worldName == null) {
-            return null;
-        }
-        if (isCreationWorld(p) || isResourceWorld(p)) {
-            return List.of("resource", "marker", "save", "discard");
-        }
-        // Lobby/overworld
-        return List.of("define", "resize", "create", "modify", "list", "delete", "resource");
+        if (!(input.commandSender instanceof Player p) || p.getWorld() == null) return List.of();
+        var lobby = worldManager.getLobbyWorld().getWorld();
+        return lobby != null && p.getWorld().equals(lobby)
+                ? List.of("define", "resource", "create", "modify")
+                : List.of();
     }
 
     private List<String> resourceRootChoices(CommandInput input) {

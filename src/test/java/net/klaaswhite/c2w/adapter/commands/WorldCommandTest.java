@@ -83,11 +83,11 @@ class WorldCommandTest {
     // --- permission check ---
 
     @Test
-    @DisplayName("teleport requires c2w.admin permission")
+    @DisplayName("world teleport requires c2w.admin permission")
     void teleportRequiresAdmin(@Mock Player player) {
         when(player.hasPermission("c2w.admin")).thenReturn(false);
 
-        boolean result = dispatch(input(player, "teleport", "lobby"));
+        boolean result = dispatch(input(player, "lobby"));
 
         assertTrue(result);
         verify(player).sendMessage("You don't have permission.");
@@ -105,7 +105,7 @@ class WorldCommandTest {
         var spawn = new Location(world, 1, 2, 3);
         when(world.getSpawnLocation()).thenReturn(spawn);
 
-        assertTrue(dispatch(input(player, "teleport", "lobby")));
+        assertTrue(dispatch(input(player, "lobby")));
         verify(player).teleport(spawn);
     }
 
@@ -118,7 +118,7 @@ class WorldCommandTest {
         var spawn = new Location(world, 0, 0, 0);
         when(world.getSpawnLocation()).thenReturn(spawn);
 
-        assertTrue(dispatch(input(player, "teleport", "reference")));
+        assertTrue(dispatch(input(player, "reference")));
         verify(player).teleport(spawn);
     }
 
@@ -131,7 +131,7 @@ class WorldCommandTest {
         var spawn = new Location(world, 5, 5, 5);
         when(world.getSpawnLocation()).thenReturn(spawn);
 
-        assertTrue(dispatch(input(player, "teleport", "draft")));
+        assertTrue(dispatch(input(player, "draft")));
         verify(player).teleport(spawn);
     }
 
@@ -144,7 +144,7 @@ class WorldCommandTest {
         var spawn = new Location(world, 9, 9, 9);
         when(world.getSpawnLocation()).thenReturn(spawn);
 
-        assertTrue(dispatch(input(player, "teleport", "game")));
+        assertTrue(dispatch(input(player, "game")));
         verify(player).teleport(spawn);
     }
 
@@ -155,7 +155,7 @@ class WorldCommandTest {
     void teleportUnknown(@Mock Player player) {
         when(player.hasPermission("c2w.admin")).thenReturn(true);
 
-        boolean result = dispatch(input(player, "teleport", "nope"));
+        boolean result = dispatch(input(player, "nope"));
         assertFalse(result);
         verify(player).sendMessage(contains("Unknown world"));
     }
@@ -167,7 +167,7 @@ class WorldCommandTest {
         var managed = managedWorld(null);
         when(worldManager.getLobbyWorld()).thenReturn(managed);
 
-        boolean result = dispatch(input(player, "teleport", "lobby"));
+        boolean result = dispatch(input(player, "lobby"));
         assertFalse(result);
         verify(player).sendMessage(contains("is not loaded"));
     }
@@ -175,17 +175,17 @@ class WorldCommandTest {
     // --- tab completion ---
 
     @Test
-    @DisplayName("tab completion at root offers teleport")
+    @DisplayName("tab completion at root offers world names")
     void tabRoot(@Mock Player player) {
         List<String> choices = initialCommandPiece.getChoices(input(player));
-        assertTrue(choices.contains("teleport"));
+        assertTrue(choices.contains("lobby"));
     }
 
     @Test
-    @DisplayName("tab completion for teleport offers the four worlds")
-    void tabTeleport(@Mock Player player) {
+    @DisplayName("tab completion offers the four worlds")
+    void tabWorlds(@Mock Player player) {
         // A trailing empty token is how Bukkit signals "complete the next argument".
-        List<String> choices = tabComplete(input(player, "teleport", ""));
+        List<String> choices = tabComplete(input(player, ""));
         assertTrue(choices.contains("lobby"));
         assertTrue(choices.contains("reference"));
         assertTrue(choices.contains("draft"));

@@ -40,7 +40,10 @@ public class MarkerManager implements AutoCloseable {
     public static final List<String> MARKER_NAMES = List.of(
             "wool",
             "boundary-woolcap-pit-1", "boundary-woolcap-pit-2",
-            "boundary-woolcap-elevator-1", "boundary-woolcap-elevator-2"
+            "boundary-woolcap-elevator-1", "boundary-woolcap-elevator-2",
+            "draft-red-1", "draft-red-2",
+            "draft-blue-1", "draft-blue-2",
+            "draft-spectator-1", "draft-spectator-2"
     );
 
     private final Managers managers;

@@ -1,10 +1,12 @@
 package net.klaaswhite.c2w.adapter.commands;
 
+import net.klaaswhite.c2w.adapter.managers.MarkerManager;
+import net.klaaswhite.c2w.adapter.managers.StructureCreationManager;
+import net.klaaswhite.c2w.bootstrap.config.FolderStructureTypeConfig;
+import net.klaaswhite.c2w.domain.commands.CommandInput;
 import net.klaaswhite.c2w.domain.commands.CommandPiece;
 import net.klaaswhite.c2w.domain.commands.DynamicListChoiceCommandPiece;
 import net.klaaswhite.c2w.domain.commands.TreeChoiceCommandPiece;
-import net.klaaswhite.c2w.domain.commands.CommandInput;
-import net.klaaswhite.c2w.adapter.managers.MarkerManager;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -12,35 +14,31 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class MarkerCommand extends BaseCommand {
-    private final MarkerManager markerManager;
+    private final StructureCreationManager creationManager;
+    private final FolderStructureTypeConfig typeConfig;
 
-    public MarkerCommand(JavaPlugin plugin, MarkerManager markerManager) {
+    public MarkerCommand(
+            JavaPlugin plugin,
+            StructureCreationManager creationManager,
+            FolderStructureTypeConfig typeConfig
+    ) {
         super(plugin);
-        this.markerManager = markerManager;
+        this.creationManager = creationManager;
+        this.typeConfig = typeConfig;
         createCommandChain();
         register();
     }
 
     @Override
     protected void createCommandChain() {
+        var markerActions = new TreeChoiceCommandPiece(null);
+        markerActions.addChoice("placelooking", markerNameTree(this::placeLooking));
+        markerActions.addChoice("placehere", markerNameTree(this::placeHere));
 
-        var createAtCommand = new TreeChoiceCommandPiece(null);
-        var createCommand = new CommandPiece(null, this::createMarker);
-        var createNameCommand = new DynamicListChoiceCommandPiece(createCommand, null, this::getDynamicMarkerSuggestions);
-        createAtCommand.addChoice("player", createNameCommand);
-        createAtCommand.addChoice("looking", createNameCommand);
-
-        var removeSpecificCommand = new CommandPiece(null, this::removeMarker);
-        var removeCommand = new DynamicListChoiceCommandPiece(removeSpecificCommand, null, this::getMarkers);
-
-        var listCommand = new CommandPiece(null, this::listMarkers);
-
-        var markerCommand = new TreeChoiceCommandPiece(null);
-        markerCommand.addChoice("create", createAtCommand);
-        markerCommand.addChoice("remove", removeCommand);
-        markerCommand.addChoice("list", listCommand);
-
-        initialCommandPiece = markerCommand;
+        initialCommandPiece = new MarkerRoot(
+                markerActions,
+                new CommandPiece(null, this::removeLooking),
+                new CommandPiece(null, this::removeHere));
     }
 
     @Override
@@ -48,91 +46,95 @@ public class MarkerCommand extends BaseCommand {
         return "marker";
     }
 
-    private boolean checkAdmin(CommandInput input, org.bukkit.command.CommandSender sender) {
-        if (!sender.hasPermission("c2w.admin")) {
-            sender.sendMessage("You don't have permission.");
-            return true;
-        }
-        return false;
-    }
-
-    private boolean createMarker(CommandInput commandInput) {
-        if (!(commandInput.commandSender instanceof org.bukkit.command.CommandSender s))
-            return false;
-        if (checkAdmin(commandInput, s)) return true;
-        if (commandInput.strings.length < 3) {
-            s.sendMessage("§cUsage: /marker create <player|looking> <marker-name>");
-            s.sendMessage("§eExamples:");
-            s.sendMessage("  §7/marker create looking wool §f- Create wool spawn marker (colors assigned on game start)");
-            s.sendMessage("  §7/marker create looking spawnpoint §f- Create generic spawn point (team determined by layout)");
-            s.sendMessage("  §7/marker create looking boundary-woolcap-pit-1 §f- Create pit boundary");
-            s.sendMessage("§eMarker names: wool, spawnpoint, boundary-woolcap-pit-<1|2>, boundary-woolcap-elevator-<1|2>");
+    private boolean checkContext(CommandInput input) {
+        if (!(input.commandSender instanceof Player p)) return false;
+        if (!p.hasPermission("c2w.admin")) {
+            p.sendMessage("You don't have permission.");
             return false;
         }
-
-        if (!(commandInput.commandSender instanceof Player player))
+        if (creationManager.getCreationSession(p.getWorld().getName()) == null) {
+            p.sendMessage("This command can only be used in a structure world.");
             return false;
-
-        this.markerManager.createMarker(player, commandInput.strings[1], commandInput.strings[2]);
-        player.sendMessage("§aMarker '" + commandInput.strings[2] + "' created at your " + commandInput.strings[1] + " position.");
-
+        }
         return true;
     }
 
-    private List<String> getMarkers(CommandInput commandInput) {
-        if (!(commandInput.commandSender instanceof Player player))
-            return List.of();
-
-        return this.markerManager.getMarkersInWorld(player);
+    private boolean placeLooking(CommandInput input) {
+        if (!checkContext(input)) return false;
+        return creationManager.placeGameMarker((Player) input.commandSender, input.strings[1]);
     }
 
-    private List<String> getDynamicMarkerSuggestions(CommandInput commandInput) {
-        List<String> suggestions = new ArrayList<>(MarkerManager.MARKER_NAMES);
-        suggestions.add("spawnpoint");
+    private boolean placeHere(CommandInput input) {
+        if (!checkContext(input)) return false;
+        return creationManager.placeGameMarkerHere((Player) input.commandSender, input.strings[1]);
+    }
+
+    private boolean removeLooking(CommandInput input) {
+        if (!checkContext(input)) return false;
+        return creationManager.removeGameMarkerLooking((Player) input.commandSender);
+    }
+
+    private boolean removeHere(CommandInput input) {
+        if (!checkContext(input)) return false;
+        return creationManager.removeGameMarkerHere((Player) input.commandSender);
+    }
+
+    private List<String> markerSuggestions(CommandInput input) {
+        if (!(input.commandSender instanceof Player p)
+                || creationManager.getCreationSession(p.getWorld().getName()) == null) {
+            return List.of();
+        }
+        var suggestions = new ArrayList<>(MarkerManager.MARKER_NAMES);
+        if (!suggestions.contains("spawnpoint")) suggestions.add("spawnpoint");
+        for (String typeName : typeConfig.getTypeNames()) {
+            for (String resourceId : typeConfig.getResourceIds(typeName)) {
+                if (!suggestions.contains(resourceId)) suggestions.add(resourceId);
+            }
+            for (String resourceId : typeConfig.getTrialResourceIds(typeName)) {
+                addIfMissing(suggestions, "trial-spawner-" + resourceId);
+                addIfMissing(suggestions, "trial-vault-" + resourceId);
+            }
+        }
         return suggestions;
     }
 
-    private boolean listMarkers(CommandInput commandInput) {
-        if (!(commandInput.commandSender instanceof org.bukkit.command.CommandSender s))
-            return false;
-        if (checkAdmin(commandInput, s)) return true;
-
-        var markers = getMarkers(commandInput);
-        s.sendMessage("§eMarkers in this world (" + markers.size() + "):");
-        if (markers.isEmpty()) {
-            s.sendMessage("  §7No markers found. Use §f/marker create looking <name> §7to create one.");
-            s.sendMessage("§eMarker types: wool, spawnpoint, boundary-woolcap-pit-<1|2>, boundary-woolcap-elevator-<1|2>");
-        } else {
-            for (String marker : markers) {
-                s.sendMessage("  §7- §f" + marker);
-            }
-        }
-        return true;
+    private CommandPiece markerNameTree(java.util.function.Function<CommandInput, Boolean> handler) {
+        return new DynamicListChoiceCommandPiece(
+                new CommandPiece(null, handler), null, this::markerSuggestions);
     }
 
-    private boolean removeMarker(CommandInput commandInput) {
-        if (!(commandInput.commandSender instanceof org.bukkit.command.CommandSender s))
-            return false;
-        if (checkAdmin(commandInput, s)) return true;
-        if (commandInput.strings.length < 2) {
-            s.sendMessage("§cUsage: /marker remove <marker-name>");
-            s.sendMessage("§eUse §7/marker list §eto see all markers in your world.");
-            return false;
+    private static void addIfMissing(List<String> suggestions, String value) {
+        if (!suggestions.contains(value)) suggestions.add(value);
+    }
+
+    private final class MarkerRoot extends CommandPiece {
+        private final TreeChoiceCommandPiece placementActions;
+        private final CommandPiece removeLooking;
+        private final CommandPiece removeHere;
+
+        private MarkerRoot(TreeChoiceCommandPiece placementActions,
+                           CommandPiece removeLooking,
+                           CommandPiece removeHere) {
+            super(null, null);
+            this.placementActions = placementActions;
+            this.removeLooking = removeLooking;
+            this.removeHere = removeHere;
         }
 
-        if (!(commandInput.commandSender instanceof Player player))
-            return false;
-
-        if (this.markerManager.removeMarker(player, commandInput.strings[1])) {
-            if (commandInput.commandSender instanceof org.bukkit.command.CommandSender sender) {
-                sender.sendMessage("§aMarker '" + commandInput.strings[1] + "' was removed.");
+        @Override
+        public List<String> getChoices(CommandInput input) {
+            if (!(input.commandSender instanceof Player p)
+                    || creationManager.getCreationSession(p.getWorld().getName()) == null) {
+                return List.of();
             }
-        } else {
-            if (commandInput.commandSender instanceof org.bukkit.command.CommandSender sender) {
-                sender.sendMessage("§cMarker '" + commandInput.strings[1] + "' was not found.");
-            }
+            return List.of("removelooking", "removehere", "placehere", "placelooking");
         }
 
-        return true;
+        @Override
+        public CommandPiece getNextPiece(String choice) {
+            if ("removelooking".equalsIgnoreCase(choice)) return removeLooking;
+            if ("removehere".equalsIgnoreCase(choice)) return removeHere;
+            return placementActions.getNextPiece(choice);
+        }
     }
 }

@@ -8,7 +8,7 @@ commands:
   c2w:
     description: c2w game commands
   marker:
-    description: Create, remove and list markers
+    description: Place and remove structure markers
   world:
     description: Teleport between plugin-managed worlds
   structure:
@@ -19,6 +19,40 @@ commands:
     description: Layout editor — place structures and save map layouts
     usage: /layout <subcommand>
     permission: c2w.admin
+  visualizemarkers:
+    description: Toggle marker visualization in an editor world
+    permission: c2w.admin
+  save:
+    description: Save the current editor world
+    permission: c2w.admin
+  discard:
+    description: Discard the current editor world
+    permission: c2w.admin
+  clear:
+    description: Clear resource markers
+    permission: c2w.admin
+  define:
+    description: Define a structure or resource
+    permission: c2w.admin
+  mark:
+    description: Mark a resource block
+    permission: c2w.admin
+  list:
+    description: List resource markers
+    permission: c2w.admin
+  place:
+    description: Place a structure in a layout editor
+    permission: c2w.admin
+  move:
+    description: Move a structure in a layout editor
+    permission: c2w.admin
+  remove:
+    description: Remove a structure from a layout editor
+    permission: c2w.admin
+  rotate:
+    description: Rotate a structure in a layout editor
+    permission: c2w.admin
+  setspawn:
+    description: Set a layout spawn team
+    permission: c2w.admin
 
-depend:
-  [ProtocolLib]

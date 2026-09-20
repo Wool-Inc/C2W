@@ -3,13 +3,31 @@ package net.klaaswhite.c2w.adapter.managers;
 import net.klaaswhite.c2w.bootstrap.world.ManagedWorld;
 import net.klaaswhite.c2w.adapter.minecraft.MinecraftManager;
 import net.klaaswhite.c2w.domain.model.BlockPos;
+import net.klaaswhite.c2w.domain.model.Mirror;
+import net.klaaswhite.c2w.domain.model.StructureRotation;
 import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.File;
+import java.io.IOException;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Random;
+import java.util.Set;
+import java.util.UUID;
+import java.util.logging.Logger;
 
 public class WorldManager implements AutoCloseable {
+
+    private static final Logger log = Logger.getLogger(WorldManager.class.getName());
+    private static final String LOBBY_STRUCTURE = "lobby";
+    private static final String DRAFT_STRUCTURE = "draft";
+    private static final BlockPos SPECIAL_STRUCTURE_ORIGIN = new BlockPos(-54, 63, -54);
+    private static final String SPAWNPOINT_MARKER = "spawnpoint";
+    private static final String[] DRAFT_SELECTION_TEAMS = {"Red", "Blue", "Spectator"};
 
     private final JavaPlugin plugin;
     private final MinecraftManager mc;
@@ -18,6 +36,7 @@ public class WorldManager implements AutoCloseable {
 
     private final ManagedWorld draftWorld;
     private final ManagedWorld gameWorld;
+    private final Map<String, SelectionRegion> draftSelectionRegions = new HashMap<>();
 
     // ponytail: prefixes matching transient C2W worlds left over from a crash/restart.
     // NOTE: c2w_create_* creation worlds are cleaned up here on startup rather than
@@ -29,13 +48,17 @@ public class WorldManager implements AutoCloseable {
     };
 
     public WorldManager(JavaPlugin plugin, MinecraftManager mc) {
+        this(plugin, mc, true);
+    }
+
+    public WorldManager(JavaPlugin plugin, MinecraftManager mc, boolean applyLobbyStructure) {
         this.plugin = plugin;
         this.mc = mc;
         var worlds = mc.worlds();
 
         // Persistent worlds: created on first load, never deleted by the plugin.
         // The lobby gets a flat 9x9 bedrock platform so more players fit waiting there.
-        this.lobbyWorld = new ManagedWorld("c2w_lobby", false, worlds, false, true, 4);
+        this.lobbyWorld = new ManagedWorld("c2w_lobby", false, worlds, false, false, 0);
         this.referenceWorld = new ManagedWorld("c2w_reference", false, worlds, true, false, 0);
 
         // Transient worlds: created on demand, deleted by destroyDraftAndGameWorlds.
@@ -48,8 +71,15 @@ public class WorldManager implements AutoCloseable {
         // Nuke leftover transient worlds from a previous crash/restart.
         cleanupLeftoverTransientWorlds();
 
-        // Make sure persistent worlds exist at server start.
-        this.lobbyWorld.loadOrCreate();
+        if (applyLobbyStructure) {
+            var lobby = this.lobbyWorld.loadOrCreate();
+            if (lobby != null && !loadSpecialStructure(lobby, LOBBY_STRUCTURE)) {
+                createLobbyPlatform(lobby);
+            }
+        } else if (this.lobbyWorld.getWorld() == null) {
+            var lobby = this.lobbyWorld.loadOrCreate();
+            if (lobby != null) createLobbyPlatform(lobby);
+        }
         this.referenceWorld.loadOrCreate();
     }
 
@@ -72,8 +102,161 @@ public class WorldManager implements AutoCloseable {
     public World createDraftWorld() {
         var w = draftWorld.loadOrCreate();
         if (w == null) return null;
-        createTeamSelectionAreas(w);
+        draftSelectionRegions.clear();
+        if (!loadSpecialStructure(w, DRAFT_STRUCTURE)) {
+            createTeamSelectionAreas(w);
+        }
         return w;
+    }
+
+    /** Resolve a draft selection region using the active structure, or its code fallback. */
+    public @org.jspecify.annotations.Nullable String resolveTeamSelectionAt(
+            String worldName, int x, int feetY, int z) {
+        if ("c2w_draft".equals(worldName) && !draftSelectionRegions.isEmpty()) {
+            for (var entry : draftSelectionRegions.entrySet()) {
+                if (entry.getValue().contains(x, feetY, z)) return entry.getKey();
+            }
+            return null;
+        }
+        return resolveTeamSelectionAt(x, feetY, z);
+    }
+
+    public boolean hasMarkerDefinedDraftSelection() {
+        return !draftSelectionRegions.isEmpty();
+    }
+
+    private boolean loadSpecialStructure(World world, String structureName) {
+        File dataFolder = plugin.getDataFolder();
+        if (dataFolder == null) return false;
+        File structureFile = specialStructureFile(structureName);
+        if (!structureFile.isFile()) return false;
+
+        String worldName = world.getName();
+        boolean persistentLobby = LOBBY_STRUCTURE.equals(structureName);
+        Set<UUID> previousMarkers = persistentLobby
+            ? snapshotStructureMarkers(worldName) : Set.of();
+        removeStructureMarkers(worldName, previousMarkers);
+        if (persistentLobby) removeLegacyLobbyPlatform(worldName);
+        try {
+            String structureId = mc.structures().loadStructure(structureFile);
+                mc.structures().place(structureId, worldName, SPECIAL_STRUCTURE_ORIGIN, true,
+                    StructureRotation.NONE, Mirror.NONE, -1, 1.0f, new Random());
+        } catch (IOException | RuntimeException e) {
+            log.warning("Failed to load " + structureFile.getPath() + ": " + e.getMessage());
+            return false;
+        }
+
+        removeDuplicateStructureMarkers(worldName, previousMarkers);
+        BlockPos spawnpoint = findSingleMarker(worldName, SPAWNPOINT_MARKER, structureName, previousMarkers);
+        if (spawnpoint == null) return false;
+        if (DRAFT_STRUCTURE.equals(structureName)) {
+            var regions = readDraftSelectionRegions(worldName);
+            if (regions == null) return false;
+            mc.worlds().setSpawnPos(worldName, spawnpoint);
+            draftSelectionRegions.putAll(regions);
+        } else {
+            mc.worlds().setSpawnPos(worldName, spawnpoint);
+        }
+        return true;
+    }
+
+    private File specialStructureFile(String structureName) {
+        File canonical = new File(plugin.getDataFolder(),
+                "structures/general/instances/" + structureName + ".nbt");
+        if (canonical.isFile()) return canonical;
+        return new File(plugin.getDataFolder(), "structures/" + structureName + ".nbt");
+    }
+
+    private Set<UUID> snapshotStructureMarkers(String worldName) {
+        String markerKey = mc.markers().getMarkerKey();
+        Set<UUID> markers = new HashSet<>();
+        for (var marker : mc.markers().getMarkersInWorld(worldName)) {
+            if (marker.getPersistentData(markerKey) != null) {
+                markers.add(marker.getUniqueId());
+            }
+        }
+        return markers;
+    }
+
+    private void removeStructureMarkers(String worldName, Set<UUID> markers) {
+        String markerKey = mc.markers().getMarkerKey();
+        for (var marker : mc.markers().getMarkersInWorld(worldName)) {
+            if (marker.getPersistentData(markerKey) != null && markers.contains(marker.getUniqueId())) {
+                marker.remove();
+            }
+        }
+    }
+
+    private void removeLegacyLobbyPlatform(String worldName) {
+        for (int x = -4; x <= 4; x++) {
+            for (int z = -4; z <= 4; z++) {
+                if (mc.blocks().getBlockType(worldName, new BlockPos(x, 64, z)) == Material.BEDROCK) {
+                    mc.blocks().setBlock(worldName, new BlockPos(x, 64, z), Material.AIR);
+                }
+            }
+        }
+    }
+
+    private void removeDuplicateStructureMarkers(String worldName, Set<UUID> previousMarkers) {
+        String markerKey = mc.markers().getMarkerKey();
+        Map<String, Set<BlockPos>> seen = new HashMap<>();
+        for (var marker : mc.markers().getMarkersInWorld(worldName)) {
+            if (previousMarkers.contains(marker.getUniqueId())) continue;
+            String name = marker.getPersistentData(markerKey);
+            if (name == null) continue;
+            var positions = seen.computeIfAbsent(name, ignored -> new HashSet<>());
+            if (!positions.add(marker.getPosition())) {
+                marker.remove();
+            }
+        }
+    }
+
+    private Map<String, SelectionRegion> readDraftSelectionRegions(String worldName) {
+        var regions = new HashMap<String, SelectionRegion>();
+        for (var team : DRAFT_SELECTION_TEAMS) {
+            String prefix = "draft-" + team.toLowerCase();
+            BlockPos first = findSingleMarker(worldName, prefix + "-1", DRAFT_STRUCTURE);
+            BlockPos second = findSingleMarker(worldName, prefix + "-2", DRAFT_STRUCTURE);
+            if (first == null || second == null) return null;
+            regions.put(team, SelectionRegion.from(first, second));
+        }
+        return regions;
+    }
+
+    private BlockPos findSingleMarker(String worldName, String markerName, String structureName) {
+        return findSingleMarker(worldName, markerName, structureName, Set.of());
+    }
+
+    private BlockPos findSingleMarker(String worldName, String markerName, String structureName,
+                                      Set<UUID> excludedMarkers) {
+        var positions = findMarkers(worldName, markerName, excludedMarkers);
+        if (positions.size() != 1) {
+            log.warning("Structure " + structureName + " in world " + worldName
+                    + " requires exactly one '" + markerName + "' marker, found " + positions.size());
+            return null;
+        }
+        return positions.get(0);
+    }
+
+    private List<BlockPos> findMarkers(String worldName, String markerName) {
+        return findMarkers(worldName, markerName, Set.of());
+    }
+
+    private List<BlockPos> findMarkers(String worldName, String markerName,
+                           Set<UUID> excludedMarkers) {
+        String markerKey = mc.markers().getMarkerKey();
+        return mc.markers().getMarkersInWorld(worldName).stream()
+            .filter(marker -> !excludedMarkers.contains(marker.getUniqueId()))
+                .filter(marker -> markerName.equals(marker.getPersistentData(markerKey)))
+                .map(net.klaaswhite.c2w.adapter.minecraft.MarkerEntity::getPosition)
+            .distinct()
+                .toList();
+    }
+
+    private void createLobbyPlatform(World world) {
+        fillRect(world.getName(), Material.BEDROCK, PLATFORM_SURFACE_Y,
+            -4, 4, -4, 4);
+        mc.worlds().setSpawnPos(world.getName(), new BlockPos(0, 65, 0));
     }
 
     // --------------------------------------------------------------------
@@ -99,6 +282,7 @@ public class WorldManager implements AutoCloseable {
     private void createTeamSelectionAreas(World world) {
         if (mc == null) return;
         String worldName = world.getName();
+        mc.worlds().setSpawnPos(worldName, new BlockPos(0, 65, 0));
 
         // Spawn platform (3x3) at the origin.
         fillPlatform(worldName, Material.BEDROCK, Material.SMOOTH_STONE,
@@ -142,6 +326,21 @@ public class WorldManager implements AutoCloseable {
         return null;
     }
 
+    private record SelectionRegion(int minX, int maxX, int minY, int maxY, int minZ, int maxZ) {
+        private static SelectionRegion from(BlockPos first, BlockPos second) {
+            return new SelectionRegion(
+                    Math.min(first.x(), second.x()), Math.max(first.x(), second.x()),
+                    Math.min(first.y(), second.y()), Math.max(first.y(), second.y()),
+                    Math.min(first.z(), second.z()), Math.max(first.z(), second.z()));
+        }
+
+        private boolean contains(int x, int y, int z) {
+            return x >= minX && x <= maxX
+                    && y >= minY && y <= maxY
+                    && z >= minZ && z <= maxZ;
+        }
+    }
+
     /** Fill a rectangular base+surface platform (surface one block above the base). */
     private void fillPlatform(String worldName, Material base, Material surface,
             int minX, int maxX, int minZ, int maxZ, int baseY) {
@@ -179,6 +378,7 @@ public class WorldManager implements AutoCloseable {
     public void destroyDraftAndGameWorlds() {
         draftWorld.delete();
         gameWorld.delete();
+        draftSelectionRegions.clear();
     }
 
     /**

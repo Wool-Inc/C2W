@@ -117,6 +117,7 @@ class ResourceManagerTest {
             rm.openResourceWorld(player, "castle");
         }
 
+        verify(players).setGameMode("Alice", "CREATIVE");
         verify(mc.players()).teleportToWorld(eq("Alice"), any(), eq("c2w_resource_castle"));
         assertNotNull(rm.getResourceSession("c2w_resource_castle"));
     }
@@ -158,6 +159,7 @@ class ResourceManagerTest {
 
         // World should only be created once
         verify(mc.worlds(), times(1)).createVoidWorld(eq("c2w_resource_castle"), any());
+        verify(players, times(2)).setGameMode("Alice", "CREATIVE");
     }
 
     // --- markResourceBlock: no session ---

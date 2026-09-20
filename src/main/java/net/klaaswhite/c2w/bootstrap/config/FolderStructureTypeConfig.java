@@ -14,6 +14,8 @@ import java.util.Map;
 
 public class FolderStructureTypeConfig implements TypeDimensionSource {
 
+    public static final String GENERAL_TYPE = "general";
+
     private final File structuresDir;
 
     public FolderStructureTypeConfig(ConfigAccess configAccess) {
@@ -46,7 +48,32 @@ public class FolderStructureTypeConfig implements TypeDimensionSource {
                 names.add(dir.getName());
             }
         }
+        if (!names.contains(GENERAL_TYPE) && !getInstanceIds(GENERAL_TYPE).isEmpty()) {
+            names.add(GENERAL_TYPE);
+        }
         return names;
+    }
+
+    /** Return saved instance IDs, including the legacy lobby and draft files. */
+    public List<String> getInstanceIds(String typeName) {
+        List<String> ids = new ArrayList<>();
+        File instancesDir = new File(structuresDir, typeName + "/instances");
+        if (instancesDir.isDirectory()) {
+            File[] files = instancesDir.listFiles((dir, name) -> name.endsWith(".nbt"));
+            if (files != null) {
+                for (File file : files) {
+                    ids.add(file.getName().substring(0, file.getName().length() - 4));
+                }
+            }
+        }
+        if (GENERAL_TYPE.equals(typeName)) {
+            for (String id : List.of("lobby", "draft")) {
+                if (!ids.contains(id) && new File(structuresDir, id + ".nbt").isFile()) {
+                    ids.add(id);
+                }
+            }
+        }
+        return ids;
     }
 
     public Map<String, Integer> getResourceRequirements(String typeName) {
@@ -233,7 +260,8 @@ public class FolderStructureTypeConfig implements TypeDimensionSource {
     }
 
     public boolean hasType(String typeName) {
-        return structureFile(typeName).exists();
+        return structureFile(typeName).exists()
+                || (GENERAL_TYPE.equals(typeName) && !getInstanceIds(typeName).isEmpty());
     }
 
 

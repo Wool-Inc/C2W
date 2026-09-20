@@ -47,7 +47,11 @@ public class FakeMinecraftManager implements MinecraftManager {
     private final Map<String, FakeWorld> worlds = new HashMap<>();
     private final Map<String, FakePlayer> players = new HashMap<>();
     private final Map<String, FakeMarkerEntity> markers = new HashMap<>();
+    private int markerId;
     private final Map<String, FakeStructure> structures = new HashMap<>();
+    private final Map<String, List<FakeStructureMarker>> structureMarkers = new HashMap<>();
+    private final Map<String, Integer> structurePlacementCounts = new HashMap<>();
+    private final Map<String, BlockPos> structurePlacementPositions = new HashMap<>();
     private final Map<String, Material> blocks = new HashMap<>();
     private final List<String> broadcasts = new ArrayList<>();
 
@@ -79,8 +83,22 @@ public class FakeMinecraftManager implements MinecraftManager {
 
     public FakeMarkerEntity addMarker(String worldName, BlockPos pos, String markerKey, String markerValue) {
         var m = new FakeMarkerEntity(worldName, pos, markerKey, markerValue);
-        markers.put(markerValue + "@" + worldName + "@" + pos.x() + "," + pos.y() + "," + pos.z(), m);
+        markers.put(markerValue + "@" + worldName + "@" + pos.x() + "," + pos.y() + "," + pos.z()
+                + "#" + markerId++, m);
         return m;
+    }
+
+    public void addStructureMarker(String fileName, BlockPos pos, String markerValue) {
+        structureMarkers.computeIfAbsent(fileName, ignored -> new ArrayList<>())
+                .add(new FakeStructureMarker(pos, markerValue));
+    }
+
+    public int getStructurePlacementCount(String fileName) {
+        return structurePlacementCounts.getOrDefault(fileName, 0);
+    }
+
+    public BlockPos getStructurePlacementPosition(String fileName) {
+        return structurePlacementPositions.get(fileName);
     }
 
     public List<String> getBroadcasts() {
@@ -233,6 +251,10 @@ public class FakeMinecraftManager implements MinecraftManager {
             var fw = worlds.get(worldName);
             return fw != null ? fw.spawnLocation : new BlockPos(0, 65, 0);
         }
+        @Override public void setSpawnPos(String worldName, BlockPos pos) {
+            var fw = worlds.get(worldName);
+            if (fw != null) fw.spawnLocation = pos;
+        }
         @Override public File getWorldContainer() { return dataFolder; }
     }
 
@@ -255,6 +277,7 @@ public class FakeMinecraftManager implements MinecraftManager {
         private final String worldName;
         private final BlockPos position;
         private final String markerValue;
+        private final UUID uuid = UUID.randomUUID();
         private final Map<String, String> pdc = new HashMap<>();
 
         FakeMarkerEntity(String worldName, BlockPos position, String markerKey, String markerValue) {
@@ -264,6 +287,7 @@ public class FakeMinecraftManager implements MinecraftManager {
             this.pdc.put(markerKey, markerValue);
         }
 
+        @Override public UUID getUniqueId() { return uuid; }
         @Override public BlockPos getPosition() { return position; }
         @Override public String getName() { return markerValue; }
         @Override public @Nullable String getPersistentData(String key) { return pdc.get(key); }
@@ -370,6 +394,8 @@ public class FakeMinecraftManager implements MinecraftManager {
         FakeStructure(String id) { this.id = id; }
     }
 
+    private record FakeStructureMarker(BlockPos position, String value) {}
+
     private class FakeStructures implements MinecraftManager.Structures {
         @Override public String loadStructure(File file) throws IOException {
             String id = "struct-" + file.getName().replace(".nbt", "");
@@ -378,7 +404,14 @@ public class FakeMinecraftManager implements MinecraftManager {
         }
         @Override public void saveStructure(File file, String structureId) throws IOException {}
         @Override public void place(String structureId, String worldName, BlockPos pos, boolean includeEntities,
-                                   StructureRotation rotation, Mirror mirror, int palette, float integrity, Random random) {}
+                                   StructureRotation rotation, Mirror mirror, int palette, float integrity, Random random) {
+            String fileName = structureId.substring("struct-".length()) + ".nbt";
+            structurePlacementCounts.merge(fileName, 1, Integer::sum);
+            structurePlacementPositions.put(fileName, pos);
+            for (var marker : structureMarkers.getOrDefault(fileName, List.of())) {
+                addMarker(worldName, marker.position(), "map_marker", marker.value());
+            }
+        }
         @Override public void fill(String structureId, String worldName, BlockPos origin, BlockPos size, boolean includeEntities) {}
         @Override public String createStructure() {
             String id = "struct-" + UUID.randomUUID();
