@@ -187,6 +187,7 @@ class StructureCreationManagerTest {
 
         verify(structures).createStructure("c2w_lobby",
             new BlockPos(-54, 63, -54), new BlockPos(100, 64, 100));
+        verifyNoInteractions(markers);
         }
 
         @Test
@@ -459,6 +460,66 @@ class StructureCreationManagerTest {
         assertEquals(1, result.get("spawner").size());
         assertEquals(new BlockPos(3, 2, 5), result.get("chest").get(0).getPosition());
         assertEquals(new BlockPos(7, 2, 9), result.get("spawner").get(0).getPosition());
+    }
+
+    // ---------------------------------------------------------------
+    // game marker placement
+    // ---------------------------------------------------------------
+
+    @Test
+    @DisplayName("placing a single-use game marker removes older markers of the same name")
+    void placeGameMarker_replacesSingleUseMarker() {
+        var manager = createManager();
+        var player = mock(Player.class);
+        var world = mock(World.class);
+        var block = mock(org.bukkit.block.Block.class);
+        var previous = mock(net.klaaswhite.c2w.adapter.minecraft.MarkerEntity.class);
+        var replacement = mock(net.klaaswhite.c2w.adapter.minecraft.MarkerEntity.class);
+
+        when(player.getWorld()).thenReturn(world);
+        when(world.getName()).thenReturn("c2w_create_dungeon_room1");
+        when(player.getTargetBlockExact(5)).thenReturn(block);
+        when(block.getX()).thenReturn(1);
+        when(block.getY()).thenReturn(2);
+        when(block.getZ()).thenReturn(3);
+        when(markers.getMarkerKey()).thenReturn("map_marker");
+        when(markers.spawnMarker("c2w_create_dungeon_room1", new BlockPos(1, 2, 3)))
+                .thenReturn(replacement);
+        when(markers.getMarkersInWorld("c2w_create_dungeon_room1"))
+                .thenReturn(List.of(previous, replacement));
+        when(previous.getPersistentData("map_marker")).thenReturn("spawnpoint");
+        when(previous.getUniqueId()).thenReturn(java.util.UUID.randomUUID());
+        when(replacement.getUniqueId()).thenReturn(java.util.UUID.randomUUID());
+
+        assertTrue(manager.placeGameMarker(player, "spawnpoint"));
+
+        verify(previous).remove();
+        verify(replacement).setPersistentData("map_marker", "spawnpoint");
+    }
+
+    @Test
+    @DisplayName("placing a wool marker preserves older wool markers")
+    void placeGameMarker_preservesMultiUseWoolMarkers() {
+        var manager = createManager();
+        var player = mock(Player.class);
+        var world = mock(World.class);
+        var block = mock(org.bukkit.block.Block.class);
+        var replacement = mock(net.klaaswhite.c2w.adapter.minecraft.MarkerEntity.class);
+
+        when(player.getWorld()).thenReturn(world);
+        when(world.getName()).thenReturn("c2w_create_dungeon_room1");
+        when(player.getTargetBlockExact(5)).thenReturn(block);
+        when(block.getX()).thenReturn(1);
+        when(block.getY()).thenReturn(2);
+        when(block.getZ()).thenReturn(3);
+        when(markers.getMarkerKey()).thenReturn("map_marker");
+        when(markers.spawnMarker("c2w_create_dungeon_room1", new BlockPos(1, 2, 3)))
+                .thenReturn(replacement);
+
+        assertTrue(manager.placeGameMarker(player, "wool"));
+
+        verify(replacement).setPersistentData("map_marker", "wool");
+        verify(markers, never()).getMarkersInWorld(anyString());
     }
 
     // ---------------------------------------------------------------

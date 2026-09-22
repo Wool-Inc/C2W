@@ -132,13 +132,21 @@ public class WorldManager implements AutoCloseable {
         if (!structureFile.isFile()) return false;
 
         String worldName = world.getName();
+        log.info(() -> "Loading " + structureName + " structure from " + structureFile.getPath()
+                + " into " + worldName + " at " + SPECIAL_STRUCTURE_ORIGIN);
         boolean persistentLobby = LOBBY_STRUCTURE.equals(structureName);
         Set<UUID> previousMarkers = persistentLobby
             ? snapshotStructureMarkers(worldName) : Set.of();
+        if (persistentLobby) {
+            log.info(() -> "Removing " + previousMarkers.size()
+                    + " existing C2W marker(s) before reloading the lobby structure");
+        }
         removeStructureMarkers(worldName, previousMarkers);
         if (persistentLobby) removeLegacyLobbyPlatform(worldName);
         try {
             String structureId = mc.structures().loadStructure(structureFile);
+                log.info(() -> "Loaded " + structureName + " structure as " + structureId
+                        + "; placing with entities included");
                 mc.structures().place(structureId, worldName, SPECIAL_STRUCTURE_ORIGIN, true,
                     StructureRotation.NONE, Mirror.NONE, -1, 1.0f, new Random());
         } catch (IOException | RuntimeException e) {
@@ -147,17 +155,36 @@ public class WorldManager implements AutoCloseable {
         }
 
         removeDuplicateStructureMarkers(worldName, previousMarkers);
+        logStructureMarkers(worldName, structureName, previousMarkers);
         BlockPos spawnpoint = findSingleMarker(worldName, SPAWNPOINT_MARKER, structureName, previousMarkers);
         if (spawnpoint == null) return false;
         if (DRAFT_STRUCTURE.equals(structureName)) {
             var regions = readDraftSelectionRegions(worldName);
             if (regions == null) return false;
             mc.worlds().setSpawnPos(worldName, spawnpoint);
+            logSpawnpoint(worldName, structureName, spawnpoint);
             draftSelectionRegions.putAll(regions);
         } else {
             mc.worlds().setSpawnPos(worldName, spawnpoint);
+            logSpawnpoint(worldName, structureName, spawnpoint);
         }
         return true;
+    }
+
+    private void logStructureMarkers(String worldName, String structureName, Set<UUID> excludedMarkers) {
+        String markerKey = mc.markers().getMarkerKey();
+        var markers = mc.markers().getMarkersInWorld(worldName).stream()
+                .filter(marker -> !excludedMarkers.contains(marker.getUniqueId()))
+                .map(marker -> "'" + marker.getPersistentData(markerKey) + "' at " + marker.getPosition())
+                .toList();
+        log.info(() -> "Markers placed by " + structureName + " structure in " + worldName
+                + ": " + (markers.isEmpty() ? "none" : String.join(", ", markers)));
+    }
+
+    private void logSpawnpoint(String worldName, String structureName, BlockPos spawnpoint) {
+        BlockPos actualSpawn = mc.worlds().getSpawnPos(worldName);
+        log.info(() -> "Set " + worldName + " spawn from " + structureName + " spawnpoint marker at "
+                + spawnpoint + "; world now reports spawn " + actualSpawn);
     }
 
     private File specialStructureFile(String structureName) {
@@ -200,10 +227,16 @@ public class WorldManager implements AutoCloseable {
     private void removeDuplicateStructureMarkers(String worldName, Set<UUID> previousMarkers) {
         String markerKey = mc.markers().getMarkerKey();
         Map<String, Set<BlockPos>> seen = new HashMap<>();
+        net.klaaswhite.c2w.adapter.minecraft.MarkerEntity lastSpawnpoint = null;
         for (var marker : mc.markers().getMarkersInWorld(worldName)) {
             if (previousMarkers.contains(marker.getUniqueId())) continue;
             String name = marker.getPersistentData(markerKey);
             if (name == null) continue;
+            if (SPAWNPOINT_MARKER.equals(name)) {
+                if (lastSpawnpoint != null) lastSpawnpoint.remove();
+                lastSpawnpoint = marker;
+                continue;
+            }
             var positions = seen.computeIfAbsent(name, ignored -> new HashSet<>());
             if (!positions.add(marker.getPosition())) {
                 marker.remove();

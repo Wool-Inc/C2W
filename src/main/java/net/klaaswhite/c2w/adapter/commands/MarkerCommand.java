@@ -80,22 +80,33 @@ public class MarkerCommand extends BaseCommand {
     }
 
     private List<String> markerSuggestions(CommandInput input) {
-        if (!(input.commandSender instanceof Player p)
-                || creationManager.getCreationSession(p.getWorld().getName()) == null) {
+        if (!(input.commandSender instanceof Player p)) {
             return List.of();
         }
+        var session = creationManager.getCreationSession(p.getWorld().getName());
+        if (session == null) return List.of();
+
+        if (isLobbyOrSpawnStructure(session)) {
+            return List.of("spawnpoint");
+        }
+
         var suggestions = new ArrayList<>(MarkerManager.MARKER_NAMES);
-        if (!suggestions.contains("spawnpoint")) suggestions.add("spawnpoint");
-        for (String typeName : typeConfig.getTypeNames()) {
-            for (String resourceId : typeConfig.getResourceIds(typeName)) {
-                if (!suggestions.contains(resourceId)) suggestions.add(resourceId);
-            }
-            for (String resourceId : typeConfig.getTrialResourceIds(typeName)) {
-                addIfMissing(suggestions, "trial-spawner-" + resourceId);
-                addIfMissing(suggestions, "trial-vault-" + resourceId);
-            }
+        addIfMissing(suggestions, "spawnpoint");
+        if ("general".equalsIgnoreCase(session.typeName())
+                && "draft".equalsIgnoreCase(session.id())) {
+            suggestions.removeIf(name -> !name.startsWith("draft-") && !"spawnpoint".equals(name));
+        }
+        for (String resourceId : typeConfig.getTrialResourceIds(session.typeName())) {
+            addIfMissing(suggestions, "trial-spawner-" + resourceId);
+            addIfMissing(suggestions, "trial-vault-" + resourceId);
         }
         return suggestions;
+    }
+
+    private boolean isLobbyOrSpawnStructure(StructureCreationManager.CreationSession session) {
+        return ("general".equalsIgnoreCase(session.typeName())
+                    && "lobby".equalsIgnoreCase(session.id()))
+                || "SPAWN".equalsIgnoreCase(session.typeName());
     }
 
     private CommandPiece markerNameTree(java.util.function.Function<CommandInput, Boolean> handler) {

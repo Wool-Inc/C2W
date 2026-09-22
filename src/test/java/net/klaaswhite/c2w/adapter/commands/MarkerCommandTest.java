@@ -15,6 +15,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.lang.reflect.Field;
 import java.util.List;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -82,21 +83,33 @@ class MarkerCommandTest {
     }
 
     @Test
-    void placementAutocompleteIncludesResourceIds(@Mock Player player, @Mock World world) {
+    void placementAutocompleteUsesOnlyTheActiveStructureType(@Mock Player player, @Mock World world) {
         when(player.getWorld()).thenReturn(world);
         when(world.getName()).thenReturn("c2w_create_type_id");
-        when(creationManager.getCreationSession("c2w_create_type_id")).thenReturn(mock(StructureCreationManager.CreationSession.class));
-        when(typeConfig.getTypeNames()).thenReturn(List.of("type"));
-        when(typeConfig.getResourceIds("type")).thenReturn(List.of("iron", "trial"));
+        when(creationManager.getCreationSession("c2w_create_type_id")).thenReturn(
+                new StructureCreationManager.CreationSession("c2w_create_type_id", "type", "id", UUID.randomUUID(), 0));
         when(typeConfig.getTrialResourceIds("type")).thenReturn(List.of("trial"));
 
         var placement = root.getNextPiece("placelooking");
         var choices = placement.getChoices(input(player, "placelooking", ""));
 
         assertTrue(choices.contains("wool"));
-        assertTrue(choices.contains("iron"));
-        assertTrue(choices.contains("trial"));
+        assertTrue(choices.contains("spawnpoint"));
+        assertFalse(choices.contains("iron"));
+        assertFalse(choices.contains("trial"));
         assertTrue(choices.contains("trial-spawner-trial"));
         assertTrue(choices.contains("trial-vault-trial"));
+    }
+
+    @Test
+    void lobbyAutocompleteOffersOnlyItsSpawnpoint(@Mock Player player, @Mock World world) {
+        when(player.getWorld()).thenReturn(world);
+        when(world.getName()).thenReturn("c2w_create_general_lobby");
+        when(creationManager.getCreationSession("c2w_create_general_lobby")).thenReturn(
+                new StructureCreationManager.CreationSession("c2w_create_general_lobby", "general", "lobby", UUID.randomUUID(), 0));
+
+        var placement = root.getNextPiece("placelooking");
+
+        assertEquals(List.of("spawnpoint"), placement.getChoices(input(player, "placelooking", "")));
     }
 }

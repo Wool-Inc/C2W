@@ -15,6 +15,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -284,6 +285,24 @@ class WorldManagerTest {
         assertEquals(spawn, mc.worlds().getSpawnPos("c2w_lobby"));
         assertEquals(1, mc.markers().getMarkersInWorld("c2w_lobby").size());
         assertEquals(Material.AIR, mc.blocks().getBlockType("c2w_lobby", new BlockPos(0, 64, 0)));
+    }
+
+    @Test
+    @DisplayName("lobby structure with multiple spawn markers keeps one authored spawn")
+    void multipleLobbySpawnMarkers_keepOneAuthoredSpawn() throws IOException {
+        when(plugin.getDataFolder()).thenReturn(dataFolder.toFile());
+        writeCanonicalSpecialStructure("lobby");
+        var mc = new FakeMinecraftManager(dataFolder.toFile());
+        mc.createFakeWorld("c2w_lobby");
+        var firstSpawn = new BlockPos(-4, 65, 4);
+        var secondSpawn = new BlockPos(4, 65, -4);
+        mc.addStructureMarker("lobby.nbt", firstSpawn, "spawnpoint");
+        mc.addStructureMarker("lobby.nbt", secondSpawn, "spawnpoint");
+
+        new WorldManager(plugin, mc);
+
+        assertTrue(Set.of(firstSpawn, secondSpawn).contains(mc.worlds().getSpawnPos("c2w_lobby")));
+        assertEquals(1, mc.markers().getMarkersInWorld("c2w_lobby").size());
     }
 
     @Test

@@ -175,15 +175,29 @@ public class StructureCommand extends BaseCommand {
     private List<String> gameMarkerNameSuggestions(CommandInput input) {
         // Only expose the markers relevant to structure editing: wool, spawnpoint
         // and boundary markers (capture markers are managed by the game, not here).
-        var suggestions = new ArrayList<String>();
-        suggestions.add("wool");
-        suggestions.add("spawnpoint");
-        for (String name : MarkerManager.MARKER_NAMES) {
-            if (name.startsWith("boundary-")) suggestions.add(name);
+        if (!(input.commandSender instanceof Player p)) return List.of();
+        var parts = parseCreationWorld(p);
+        if (parts == null) return List.of();
+        String typeName = parts[0];
+        String id = parts[1];
+        if ((FolderStructureTypeConfig.GENERAL_TYPE.equalsIgnoreCase(typeName)
+                    && "lobby".equalsIgnoreCase(id))
+                || "SPAWN".equalsIgnoreCase(typeName)) {
+            return List.of("spawnpoint");
         }
-        for (String typeName : typeConfig.getTypeNames()) {
-            for (String resourceId : typeConfig.getTrialResourceIds(typeName)) {
+
+        var suggestions = new ArrayList<String>();
+        suggestions.addAll(MarkerManager.MARKER_NAMES);
+        if (!suggestions.contains("spawnpoint")) suggestions.add("spawnpoint");
+        if (FolderStructureTypeConfig.GENERAL_TYPE.equalsIgnoreCase(typeName)
+                && "draft".equalsIgnoreCase(id)) {
+            suggestions.removeIf(name -> !name.startsWith("draft-") && !"spawnpoint".equals(name));
+        }
+        for (String resourceId : typeConfig.getTrialResourceIds(typeName)) {
+            if (!suggestions.contains("trial-spawner-" + resourceId)) {
                 suggestions.add("trial-spawner-" + resourceId);
+            }
+            if (!suggestions.contains("trial-vault-" + resourceId)) {
                 suggestions.add("trial-vault-" + resourceId);
             }
         }

@@ -405,7 +405,8 @@ public class StructureCreationManager implements AutoCloseable {
             return false;
         }
         markerEntity.setPersistentData(mc.markers().getMarkerKey(), markerName);
-        player.sendMessage("Placed game marker '" + markerName + "' at ("
+        int replaced = removeExistingSingleUseMarkers(worldName, markerName, markerEntity);
+        player.sendMessage((replaced > 0 ? "Replaced" : "Placed") + " game marker '" + markerName + "' at ("
                 + block.getX() + ", " + block.getY() + ", " + block.getZ() + ").");
         return true;
     }
@@ -424,9 +425,37 @@ public class StructureCreationManager implements AutoCloseable {
             return false;
         }
         markerEntity.setPersistentData(mc.markers().getMarkerKey(), markerName);
-        player.sendMessage("Placed game marker '" + markerName + "' at ("
+        int replaced = removeExistingSingleUseMarkers(worldName, markerName, markerEntity);
+        player.sendMessage((replaced > 0 ? "Replaced" : "Placed") + " game marker '" + markerName + "' at ("
                 + pos.x() + ", " + pos.y() + ", " + pos.z() + ").");
         return true;
+    }
+
+    private int removeExistingSingleUseMarkers(String worldName, String markerName,
+                                                MarkerEntity newMarker) {
+        if (!isSingleUseMarker(markerName)) return 0;
+
+        String markerKey = mc.markers().getMarkerKey();
+        UUID newMarkerId = newMarker.getUniqueId();
+        int removed = 0;
+        for (var marker : mc.markers().getMarkersInWorld(worldName)) {
+            if (newMarker == marker || (newMarkerId != null && newMarkerId.equals(marker.getUniqueId()))) {
+                continue;
+            }
+            if (markerName.equals(marker.getPersistentData(markerKey))) {
+                marker.remove();
+                removed++;
+            }
+        }
+        return removed;
+    }
+
+    private static boolean isSingleUseMarker(String markerName) {
+        return "spawnpoint".equalsIgnoreCase(markerName)
+                || markerName.startsWith("boundary-")
+                || markerName.startsWith("draft-")
+                || markerName.startsWith("trial-spawner-")
+                || markerName.startsWith("trial-vault-");
     }
 
     /** List all game markers in a creation world, grouped by name. */
@@ -611,7 +640,6 @@ public class StructureCreationManager implements AutoCloseable {
             worldName = worldManager.getLobbyWorld().getName();
             origin = new BlockPos(-54, 63, -54);
             size = new BlockPos(SPECIAL_FOOTPRINT_SIZE, SPECIAL_STRUCTURE_HEIGHT, SPECIAL_FOOTPRINT_SIZE);
-            ensureMarker(worldName, new BlockPos(0, 65, 0), "spawnpoint");
         } else {
             if (worldManager.createDraftWorld() == null) return false;
             worldName = worldManager.getDraftWorld().getName();
@@ -665,7 +693,6 @@ public class StructureCreationManager implements AutoCloseable {
                         Math.max(dimensions[1], SPECIAL_STRUCTURE_HEIGHT),
                         SPECIAL_FOOTPRINT_SIZE));
             if (structureId == null) return false;
-                ensureMarker(worldName, new BlockPos(0, 65, 0), "spawnpoint");
             if (DRAFT_ID.equals(id)) ensureDraftMarkers(worldName);
             File target = canonicalStructureInstanceFile(typeName, id);
             File parent = target.getParentFile();
