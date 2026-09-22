@@ -979,6 +979,11 @@ public class BukkitMinecraftManager implements MinecraftManager, AutoCloseable {
         }
 
         @Override
+        public float getYaw() {
+            return bukkit.getLocation().getYaw();
+        }
+
+        @Override
         public String getName() {
             return name != null ? name : "";
         }

@@ -26,10 +26,13 @@ import net.klaaswhite.c2w.bootstrap.config.FolderStructureTypeConfig;
 import net.klaaswhite.c2w.bootstrap.config.PluginConfig;
 import org.bukkit.Material;
 import org.bukkit.block.Block;
+import org.bukkit.block.BlockFace;
 import org.bukkit.block.BlockState;
 import org.bukkit.block.Container;
 import org.bukkit.block.CreatureSpawner;
 import org.bukkit.block.data.BlockData;
+import org.bukkit.block.data.Directional;
+import org.bukkit.block.data.type.Chest;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.BlockStateMeta;
@@ -442,14 +445,15 @@ public class GameManager implements AutoCloseable {
         if (spotMarkers.isEmpty()) return;
 
         // Group spots by resourceId (PDC value is "resourceId-counter", e.g. "chest-0")
-        Map<String, List<BlockPos>> spotsByResourceId = new HashMap<>();
+        Map<String, List<ResourceSpot>> spotsByResourceId = new HashMap<>();
         for (var marker : spotMarkers) {
             String val = marker.getName();
             if (val == null) continue;
             int lastDash = val.lastIndexOf('-');
             if (lastDash < 0) continue;
             String resourceId = val.substring(0, lastDash);
-            spotsByResourceId.computeIfAbsent(resourceId, k -> new ArrayList<>()).add(marker.getPosition());
+            spotsByResourceId.computeIfAbsent(resourceId, k -> new ArrayList<>())
+                    .add(new ResourceSpot(marker.getPosition(), marker.getYaw()));
         }
 
         File resFile = new File(mc.plugin().getDataFolder(), "structures/" + typeName + "/resources.nbt");
@@ -518,10 +522,11 @@ public class GameManager implements AutoCloseable {
 
             Map<String, Integer> minSpots = structureTypeConfig.getResourceRequirements(typeName);
             Random random = new Random();
+            Set<BlockPos> placedResourcePositions = new HashSet<>();
 
             for (var entry : spotsByResourceId.entrySet()) {
                 String resourceId = entry.getKey();
-                List<BlockPos> spots = entry.getValue();
+                List<ResourceSpot> spots = entry.getValue();
                 List<Object> variants = variantsByResourceId.get(resourceId);
 
                 if (variants == null || variants.isEmpty()) {
@@ -543,13 +548,18 @@ public class GameManager implements AutoCloseable {
                 // Place without cycling — extra spots stay unfilled
                 int placeCount = Math.min(spots.size(), variants.size());
                 for (int i = 0; i < placeCount; i++) {
-                    BlockPos spotPos = spots.get(i);
+                    ResourceSpot spot = spots.get(i);
+                    BlockPos spotPos = spot.position();
                     Object variant = variants.get(i);
                     try {
                         if (variant instanceof ItemStack item) {
-                            placeResourceFromItem(gameWorld, spotPos, item);
+                            placeResourceFromItem(gameWorld, spotPos, item, spot.yaw());
+                            if (item.getType().isBlock() && !item.getType().isAir()) {
+                                placedResourcePositions.add(spotPos);
+                            }
                         } else if (variant instanceof CapturedBlock cb) {
-                            placeCapturedBlock(gameWorld, spotPos, cb);
+                            placeCapturedBlock(gameWorld, spotPos, cb, spot.yaw());
+                            placedResourcePositions.add(spotPos);
                         }
                     } catch (Exception e) {
                         mc.server().broadcastMessage("§eWarning: failed to place resource block at " + spotPos);
@@ -557,6 +567,7 @@ public class GameManager implements AutoCloseable {
                     }
                 }
             }
+            mergeAdjacentChests(gameWorld, placedResourcePositions);
             configureTrialSpawners(typeName, worldName, trialEggsByResourceId);
             configureTrialVaults(typeName, worldName, trialLootByResourceId);
         } catch (IOException e) {
@@ -566,6 +577,9 @@ public class GameManager implements AutoCloseable {
 
     /** In-memory block snapshot for block-mode resources. */
     private record CapturedBlock(Material material, BlockData blockData, @Nullable BlockState tileState) {}
+
+    /** A resource destination and the direction recorded by its spot marker. */
+    private record ResourceSpot(BlockPos position, float yaw) {}
 
     /** Read a block-mode resource variant: full block + tile entity data. */
     private void readBlockVariant(String refWorldName, World refWorld, BlockPos bp, String resourceId,
@@ -633,20 +647,21 @@ public class GameManager implements AutoCloseable {
     }
 
     /** Place a block-mode resource: set type + BlockData, then restore tile entity data. */
-    private void placeCapturedBlock(World world, BlockPos pos, CapturedBlock cb) {
+    private void placeCapturedBlock(World world, BlockPos pos, CapturedBlock cb, float yaw) {
         if (cb.material.isAir()) return;
         Block block = world.getBlockAt(pos.x(), pos.y(), pos.z());
+        BlockData destinationData = orientBlockData(cb.blockData, yaw);
         block.setType(cb.material, false);
-        block.setBlockData(cb.blockData, false);
+        block.setBlockData(destinationData, false);
 
         if (cb.tileState == null) return;
         BlockState destinationState = cb.tileState.copy(block.getLocation());
-        destinationState.setBlockData(cb.blockData);
+        destinationState.setBlockData(destinationData);
         destinationState.update(true, false);
     }
 
     /** Place a container-mode resource: convert ItemStack to a block and restore its block-state data. */
-    private void placeResourceFromItem(World world, BlockPos pos, ItemStack item) {
+    private void placeResourceFromItem(World world, BlockPos pos, ItemStack item, float yaw) {
         Material mat = item.getType();
         if (!mat.isBlock() || mat.isAir()) {
             plugin.getLogger().warning("[placeResources] Item " + mat + " is not a block, skipping");
@@ -654,12 +669,111 @@ public class GameManager implements AutoCloseable {
         }
         Block block = world.getBlockAt(pos.x(), pos.y(), pos.z());
         block.setType(mat, false);
+        BlockData destinationData = orientBlockData(block.getBlockData(), yaw);
+        block.setBlockData(destinationData, false);
 
         if (item.getItemMeta() instanceof BlockStateMeta bsm && bsm.hasBlockState()) {
             BlockState itemState = bsm.getBlockState();
             BlockState destinationState = itemState.copy(block.getLocation());
+            destinationState.setBlockData(destinationData);
             destinationState.update(true, false);
         }
+    }
+
+    private static BlockData orientBlockData(BlockData blockData, float yaw) {
+        BlockData oriented = blockData.clone();
+        if (oriented instanceof Directional directional) {
+            BlockFace facing = facingForYaw(yaw);
+            if (directional.getFaces().contains(facing)) {
+                directional.setFacing(facing);
+            }
+        }
+        return oriented;
+    }
+
+    private static BlockFace facingForYaw(float yaw) {
+        int quarterTurn = Math.floorMod(Math.round(yaw / 90.0f), 4);
+        return switch (quarterTurn) {
+            case 0 -> BlockFace.SOUTH;
+            case 1 -> BlockFace.WEST;
+            case 2 -> BlockFace.NORTH;
+            default -> BlockFace.EAST;
+        };
+    }
+
+    private static void mergeAdjacentChests(World world, Set<BlockPos> placedPositions) {
+        for (BlockPos position : placedPositions) {
+            Block block = world.getBlockAt(position.x(), position.y(), position.z());
+            if (!(block.getBlockData() instanceof Chest chest)
+                    || chest.getType() != Chest.Type.SINGLE) {
+                continue;
+            }
+
+            for (BlockFace side : horizontalFaces()) {
+                BlockPos neighborPosition = offset(position, side);
+                if (!placedPositions.contains(neighborPosition)) continue;
+
+                Block neighborBlock = world.getBlockAt(
+                        neighborPosition.x(), neighborPosition.y(), neighborPosition.z());
+                if (!(neighborBlock.getBlockData() instanceof Chest neighborChest)
+                        || neighborChest.getType() != Chest.Type.SINGLE
+                        || neighborChest.getFacing() != chest.getFacing()
+                        || !isChestSide(chest.getFacing(), side)) {
+                    continue;
+                }
+
+                Chest first = (Chest) chest.clone();
+                Chest second = (Chest) neighborChest.clone();
+                first.setType(chestTypeForSide(chest.getFacing(), side));
+                second.setType(chestTypeForSide(chest.getFacing(), opposite(side)));
+                block.setBlockData(first, false);
+                neighborBlock.setBlockData(second, false);
+                break;
+            }
+        }
+    }
+
+    private static boolean isChestSide(BlockFace facing, BlockFace side) {
+        return switch (facing) {
+            case NORTH, SOUTH -> side == BlockFace.EAST || side == BlockFace.WEST;
+            case EAST, WEST -> side == BlockFace.NORTH || side == BlockFace.SOUTH;
+            default -> false;
+        };
+    }
+
+    private static Chest.Type chestTypeForSide(BlockFace facing, BlockFace side) {
+        BlockFace left = switch (facing) {
+            case NORTH -> BlockFace.WEST;
+            case SOUTH -> BlockFace.EAST;
+            case EAST -> BlockFace.NORTH;
+            case WEST -> BlockFace.SOUTH;
+            default -> BlockFace.WEST;
+        };
+        return side == left ? Chest.Type.LEFT : Chest.Type.RIGHT;
+    }
+
+    private static BlockFace opposite(BlockFace face) {
+        return switch (face) {
+            case NORTH -> BlockFace.SOUTH;
+            case SOUTH -> BlockFace.NORTH;
+            case EAST -> BlockFace.WEST;
+            case WEST -> BlockFace.EAST;
+            default -> face;
+        };
+    }
+
+    private static BlockPos offset(BlockPos position, BlockFace face) {
+        return switch (face) {
+            case NORTH -> new BlockPos(position.x(), position.y(), position.z() - 1);
+            case SOUTH -> new BlockPos(position.x(), position.y(), position.z() + 1);
+            case EAST -> new BlockPos(position.x() + 1, position.y(), position.z());
+            case WEST -> new BlockPos(position.x() - 1, position.y(), position.z());
+            default -> position;
+        };
+    }
+
+    private static List<BlockFace> horizontalFaces() {
+        return List.of(BlockFace.NORTH, BlockFace.SOUTH, BlockFace.EAST, BlockFace.WEST);
     }
 
     private void placeSpawnMarkers(StructureData placed, String worldName, BlockPos pos, String team) {

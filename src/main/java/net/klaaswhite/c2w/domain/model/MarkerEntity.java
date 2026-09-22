@@ -14,6 +14,9 @@ public interface MarkerEntity {
     /** Get the marker's current position in the world. */
     BlockPos getPosition();
 
+    /** Get the marker's horizontal looking direction in degrees. */
+    float getYaw();
+
     /** Get the marker's in-game name. */
     String getName();
 

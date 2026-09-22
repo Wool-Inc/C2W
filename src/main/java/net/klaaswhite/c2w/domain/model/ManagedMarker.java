@@ -18,6 +18,10 @@ public class ManagedMarker {
         return markerEntity.getPosition();
     }
 
+    public float getYaw() {
+        return markerEntity.getYaw();
+    }
+
     public void remove() {
         markerEntity.remove();
     }

@@ -490,9 +490,12 @@ public class StructureCommand extends BaseCommand {
 
         int counter = creationManager.countResourceSpots(p.getWorld().getName(), resourceId);
         String markerName = "resourcespot-" + typeName + "-" + id + "-" + resourceId;
+        var markerLocation = block.getLocation().add(0.5, 0, 0.5);
+        markerLocation.setYaw(p.getLocation().getYaw());
+        markerLocation.setPitch(0.0f);
 
         block.getWorld().spawn(
-                block.getLocation().add(0.5, 0, 0.5),
+                markerLocation,
                 org.bukkit.entity.Marker.class, m -> {
                     m.setCustomName(markerName);
                     m.setCustomNameVisible(false);
@@ -531,9 +534,12 @@ public class StructureCommand extends BaseCommand {
 
         int counter = creationManager.countResourceSpots(p.getWorld().getName(), resourceId);
         String markerName = "resourcespot-" + typeName + "-" + id + "-" + resourceId;
+        var markerLocation = block.getLocation().add(0.5, 0, 0.5);
+        markerLocation.setYaw(p.getLocation().getYaw());
+        markerLocation.setPitch(0.0f);
 
         block.getWorld().spawn(
-                block.getLocation().add(0.5, 0, 0.5),
+                markerLocation,
                 org.bukkit.entity.Marker.class, m -> {
                     m.setCustomName(markerName);
                     m.setCustomNameVisible(false);

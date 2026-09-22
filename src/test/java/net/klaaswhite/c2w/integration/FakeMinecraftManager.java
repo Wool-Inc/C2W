@@ -289,6 +289,7 @@ public class FakeMinecraftManager implements MinecraftManager {
 
         @Override public UUID getUniqueId() { return uuid; }
         @Override public BlockPos getPosition() { return position; }
+        @Override public float getYaw() { return 0.0f; }
         @Override public String getName() { return markerValue; }
         @Override public @Nullable String getPersistentData(String key) { return pdc.get(key); }
         @Override public void setPersistentData(String key, String value) { pdc.put(key, value); }
